@@ -37,15 +37,24 @@ def money(x: float) -> str:
     return f"-${-x:,.0f}" if x < 0 else f"${x:,.0f}"
 
 
+def _can_print(text: str) -> bool:
+    try:
+        text.encode(sys.stdout.encoding or "ascii")
+        return True
+    except (UnicodeEncodeError, LookupError):
+        return False
+
+
 def bar(x: float, width: int = 20) -> str:
     filled = round(max(0.0, min(1.0, x)) * width)
-    return "█" * filled + "░" * (width - filled)
+    full, empty = ("█", "░") if _can_print("█░") else ("#", ".")
+    return full * filled + empty * (width - filled)
 
 
 def print_analysis(idea: Idea, a: Analysis) -> None:
     m = a.market
     print(f"\n=== {idea.title}  (#{idea.id}, {idea.category}) ===")
-    print(f"Success score  {bar(a.score)} {a.score:.0%}   → {a.verdict}")
+    print(f"Success score  {bar(a.score)} {a.score:.0%}   => {a.verdict}")
     trained = (f"trained on {a.model_trained_on} real outcomes" if a.model_trained_on
                else "using built-in priors; record outcomes to teach it")
     print(f"AI model       {trained}")
@@ -87,7 +96,7 @@ def _ask(prompt: str, default: object) -> str:
 
 def cmd_new(engine: Engine, args: argparse.Namespace) -> None:
     if args.file:
-        raw = json.loads(Path(args.file).read_text())
+        raw = json.loads(Path(args.file).read_text(encoding="utf-8"))
         items = raw if isinstance(raw, list) else [raw]
         for item in items:
             idea = engine.store.add_idea(Idea.from_dict(item))
@@ -132,7 +141,7 @@ def cmd_plan(engine: Engine, args: argparse.Namespace) -> None:
     plan = engine.plan(idea)
     text = json.dumps(plan.to_dict(), indent=2) if args.json else plan.to_markdown()
     if args.out:
-        Path(args.out).write_text(text)
+        Path(args.out).write_text(text, encoding="utf-8")
         print(f"Plan written to {args.out}")
     else:
         print(text)
@@ -173,7 +182,7 @@ def cmd_rank(engine: Engine, args: argparse.Namespace) -> None:
     ranked = sorted(((engine.analyze(i), i) for i in ideas),
                     key=lambda t: (t[0].score, t[0].market.total_profit), reverse=True)
     for n, (a, idea) in enumerate(ranked, 1):
-        print(f"{n}. {idea.title} (#{idea.id}) — {a.score:.0%}, 3y profit {money(a.market.total_profit)}, "
+        print(f"{n}. {idea.title} (#{idea.id}) - {a.score:.0%}, 3y profit {money(a.market.total_profit)}, "
               f"{a.verdict}")
 
 
@@ -220,7 +229,7 @@ def cmd_review(engine: Engine, args: argparse.Namespace) -> None:
 
 
 def cmd_demo(engine: Engine, args: argparse.Namespace) -> None:
-    for item in json.loads(EXAMPLES.read_text()):
+    for item in json.loads(EXAMPLES.read_text(encoding="utf-8")):
         idea = engine.store.add_idea(Idea.from_dict(item))
         print(f"Saved example #{idea.id}: {idea.title}")
     print("\nNow try: reframe rank   |   reframe analyze 1   |   reframe plan 1")
@@ -292,7 +301,17 @@ def build_parser() -> argparse.ArgumentParser:
     return p
 
 
+def _safe_console() -> None:
+    """Never crash on characters the terminal can't show (e.g. Windows cp1252 consoles)."""
+    for stream in (sys.stdout, sys.stderr):
+        try:
+            stream.reconfigure(errors="replace")
+        except (AttributeError, ValueError):
+            pass
+
+
 def main(argv: list[str] | None = None) -> None:
+    _safe_console()
     args = build_parser().parse_args(argv)
     engine = Engine(Store(Path(args.home)) if args.home else None)
     try:

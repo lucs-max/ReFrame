@@ -134,3 +134,16 @@ def test_web_api(tmp_path):
             assert b"ReFrame" in r.read()
     finally:
         server.shutdown()
+
+
+def test_cli_works_on_non_utf8_console(tmp_path):
+    # Windows consoles often use cp1252, which can't encode symbols like █ or →.
+    import os
+    import subprocess
+    import sys
+    env = {**os.environ, "PYTHONIOENCODING": "cp1252", "REFRAME_HOME": str(tmp_path)}
+    for args in (["demo"], ["analyze", "1"], ["plan", "1"], ["rank"], ["insights"],
+                 ["plan", "1", "--out", str(tmp_path / "plan.md")]):
+        r = subprocess.run([sys.executable, "-m", "reframe", *args], env=env, capture_output=True)
+        assert r.returncode == 0, r.stderr.decode(errors="replace")
+    assert "→" in (tmp_path / "plan.md").read_text(encoding="utf-8")

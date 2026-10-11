@@ -161,11 +161,11 @@ class ViabilityModel:
 
     def save(self, path: Path) -> None:
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(json.dumps(self.to_dict(), indent=2))
+        path.write_text(json.dumps(self.to_dict(), indent=2), encoding="utf-8")
 
     @classmethod
     def load(cls, path: Path) -> "ViabilityModel":
         if not path.exists():
             return cls()
-        data = json.loads(path.read_text())
+        data = json.loads(path.read_text(encoding="utf-8"))
         return cls(data.get("weights"), data.get("bias", PRIOR_BIAS), data.get("trained_on", 0))

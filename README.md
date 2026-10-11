@@ -89,7 +89,7 @@ Requests use the server-side refusal fallback (`fallbacks: "default"`).
 
 ## Install
 
-Requires Python 3.10+. The core has no dependencies.
+Requires Python 3.9+. The core has no dependencies.
 
 ```
 pip install -e .          # or: pip install -e ".[ai,dev]"
