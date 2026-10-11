@@ -545,3 +545,53 @@ print("ok")
 """
     r = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True)
     assert r.stdout.strip() == "ok", r.stderr
+
+
+# -- robustness: the web app must always answer --------------------------------------------
+
+def test_web_reports_unexpected_errors_instead_of_dropping_connection(tmp_path, monkeypatch):
+    engine = Engine(Store(tmp_path))
+
+    def boom(*a, **k):
+        raise AttributeError("'list' object has no attribute 'get'")
+
+    monkeypatch.setattr(engine, "brainstorm", boom)
+    from reframe.web import ThreadingHTTPServer
+    server = ThreadingHTTPServer(("127.0.0.1", 0), make_handler(engine))
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    req = urllib.request.Request(f"http://127.0.0.1:{server.server_port}/api/brainstorm",
+                                 data=b'{"topic": "x"}', headers={"Content-Type": "application/json"})
+    try:
+        with pytest.raises(urllib.error.HTTPError) as err:
+            urllib.request.urlopen(req)
+        assert err.value.code == 500
+        body = json.loads(err.value.read())
+        assert "AttributeError" in body["error"] and "error.log" in body["error"]
+    finally:
+        server.shutdown()
+    assert "AttributeError" in (tmp_path / "error.log").read_text(encoding="utf-8")
+
+
+def test_live_scan_survives_odd_responses(tmp_path):
+    from reframe import live
+    from reframe.live import Fetcher
+
+    class Odd(Fetcher):
+        def get_json(self, url, headers=None):
+            return ["unexpected", "list"]  # e.g. a network filter's reply
+
+    scan = live.scan(Idea("Invoice app", category="saas", keywords="invoice"), Odd(tmp_path / "c.json"))
+    assert set(scan.errors) == {"wikipedia", "hackernews", "appstore", "github"}
+    assert scan.suggestions == []
+
+
+def test_offline_brainstorm_never_fails_because_of_live_data(tmp_path, monkeypatch):
+    from reframe import live
+    engine = Engine(Store(tmp_path))
+
+    def crash(*a, **k):
+        raise RuntimeError("network exploded")
+
+    monkeypatch.setattr(live, "scan", crash)
+    ideas = engine.brainstorm("cafes", 3)  # offline mode, live data on (defaults)
+    assert len(ideas) == 3

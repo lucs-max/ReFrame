@@ -410,7 +410,7 @@ def cmd_demo(engine: Engine, args: argparse.Namespace) -> None:
 
 def cmd_serve(engine: Engine, args: argparse.Namespace) -> None:
     from .web import serve
-    serve(engine, args.host, args.port)
+    serve(engine, args.host, args.port, open_browser=not args.no_browser)
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -511,6 +511,7 @@ def build_parser() -> argparse.ArgumentParser:
     s = sub.add_parser("serve", help="start the web app")
     s.add_argument("--host", default="127.0.0.1")
     s.add_argument("--port", type=int, default=8765)
+    s.add_argument("--no-browser", action="store_true", help="don't open the browser automatically")
     s.set_defaults(func=cmd_serve)
     return p
 

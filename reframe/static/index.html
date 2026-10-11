@@ -160,10 +160,15 @@ const FIELDS = {
 function toast(msg) { const t = $("#toast"); t.textContent = msg; t.style.display = "block";
   clearTimeout(toast.t); toast.t = setTimeout(() => t.style.display = "none", 3000); }
 
+const NO_SERVER = "Can't reach ReFrame's server. Keep the window where you ran `reframe serve` open " +
+  "(or start it again), then reload this page.";
 async function api(path, opts = {}) {
-  const r = await fetch(path, { headers: { "Content-Type": "application/json" }, ...opts,
-    body: opts.body ? JSON.stringify(opts.body) : undefined });
-  const data = await r.json();
+  let r;
+  try { r = await fetch(path, { headers: { "Content-Type": "application/json" }, ...opts,
+    body: opts.body ? JSON.stringify(opts.body) : undefined }); }
+  catch (e) { throw new Error(NO_SERVER); }
+  let data;
+  try { data = await r.json(); } catch (e) { throw new Error(`ReFrame's server sent an unexpected reply (HTTP ${r.status}). Restart \`reframe serve\` and try again.`); }
   if (!r.ok) throw Object.assign(new Error(data.error || r.statusText), data);
   return data;
 }
@@ -498,7 +503,18 @@ $("#keySave").onclick = async () => {
 };
 $("#keyCancel").onclick = () => { $("#keyBox").style.display = "none"; };
 
-(async () => { META = await api("/api/meta"); SETTINGS = await api("/api/settings"); showMode(); loadList(); })();
+if (location.protocol === "file:") {
+  document.body.innerHTML = `<div style="max-width:620px;margin:60px auto;padding:0 16px;font:16px/1.6 system-ui">
+    <h1 style="font-size:22px">Open ReFrame through its server</h1>
+    <p>This page was opened directly as a file, so it can't talk to ReFrame (that's what causes "Failed to fetch").</p>
+    <ol><li>Open a terminal in the ReFrame folder (activate the virtual environment if you use one).</li>
+      <li>Run <code>reframe serve</code>. Your browser opens ReFrame automatically.</li>
+      <li>Or open <a href="http://127.0.0.1:8765">http://127.0.0.1:8765</a> yourself while it's running.</li></ol>
+    <p>On Windows you can also double-click <b>Start ReFrame.bat</b> in the ReFrame folder.</p></div>`;
+  throw new Error("opened as file");
+}
+(async () => { META = await api("/api/meta"); SETTINGS = await api("/api/settings"); showMode(); loadList(); })()
+  .catch(e => { $("#main").innerHTML = `<div class="card"><b class="neg">ReFrame isn't responding</b><p>${esc(e.message)}</p></div>`; });
 </script>
 </body>
 </html>

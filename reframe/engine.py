@@ -179,11 +179,21 @@ class Engine:
             self.store.add_score(idea.id, a.score, a.market.total_profit, result.pulse, note)
         return result
 
-    def calibrate_new_ideas(self, ideas: list[Idea]) -> list[Idea]:
-        """Apply live signals to freshly brainstormed ideas (best effort)."""
+    def calibrate_new_ideas(self, ideas: list[Idea], budget_seconds: float = 20) -> list[Idea]:
+        """Apply live signals to freshly brainstormed ideas.
+
+        Best effort: brainstorming never fails or hangs because of live data. If
+        the internet is slow or blocked, the remaining ideas keep their numbers.
+        """
+        import time
         from . import live
         fetch = self.fetcher()
+        start = time.monotonic()
         for idea in ideas:
-            result = live.scan(idea, fetch)
-            live.apply(idea, result)
+            if time.monotonic() - start > budget_seconds:
+                break
+            try:
+                live.apply(idea, live.scan(idea, fetch))
+            except Exception:  # noqa: BLE001 - live data is optional
+                continue
         return ideas

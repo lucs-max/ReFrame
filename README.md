@@ -206,6 +206,24 @@ reframe --help
 Data is stored in `~/.reframe` (SQLite plus the trained model). Set `REFRAME_HOME` or
 `--home` to use another folder.
 
+## Starting the web app
+
+- **Windows:** double-click **`Start ReFrame.bat`** in the ReFrame folder.
+- **Mac/Linux:** run `./start-reframe.sh`, or `reframe serve` in a terminal.
+
+Your browser opens ReFrame at http://127.0.0.1:8765. **Keep the terminal window open** while
+you use it: closing it stops ReFrame. Don't open `reframe/static/index.html` directly; it
+can only work through the server. (Use `reframe serve --no-browser` to skip opening the browser.)
+
+## Troubleshooting
+
+| Message | Cause and fix |
+|---|---|
+| "Failed to fetch" / "Can't reach ReFrame's server" | The server isn't running, or the page was opened as a file. Start it as shown above and reload the page. |
+| "Port 8765 is already in use" | ReFrame is already running: just open http://127.0.0.1:8765. Or use `reframe serve --port 8766`. |
+| "ReFrame hit an unexpected error" | The details are saved in `.reframe/error.log` in your home folder. Send that file to get it fixed. |
+| Live market sources "unavailable" | No internet, or blocked by a firewall/VPN. Everything else still works. Check with `reframe market --check`. |
+
 ## Adding your own ideas
 
 Interactive: `reframe new "My idea"`, which asks for each market input with a sensible default.

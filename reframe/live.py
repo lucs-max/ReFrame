@@ -35,7 +35,7 @@ from pathlib import Path
 from .models import Idea
 
 USER_AGENT = "ReFrame/0.1 (idea analysis tool; https://github.com/lucs-max/ReFrame)"
-TIMEOUT = 10
+TIMEOUT = 6
 CACHE_TTL = 12 * 3600  # seconds: repeat scans within 12h reuse the same data
 
 STOPWORDS = {
@@ -370,8 +370,8 @@ def scan(idea: Idea, fetch: Fetcher, refresh: bool = False, now: float | None = 
                 result.signals[name] = fut.result()
             except SourceError as e:
                 result.errors[name] = str(e)
-            except (KeyError, TypeError, ValueError) as e:
-                result.errors[name] = f"unexpected data ({e.__class__.__name__})"
+            except Exception as e:  # one odd response must never break the whole scan
+                result.errors[name] = f"unexpected response ({e.__class__.__name__})"
     fetch.save()
     result.suggestions = calibrate(idea, result.signals)
     result.pulse, result.pulse_label = market_pulse(result.signals)

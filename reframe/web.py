@@ -5,7 +5,11 @@ from __future__ import annotations
 import json
 import re
 from http import HTTPStatus
-from http.server import BaseHTTPRequestHandler, HTTPServer
+import sys
+import threading
+import traceback
+from datetime import datetime
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 from .engine import Engine
@@ -28,6 +32,21 @@ def _full(engine: Engine, idea: Idea) -> dict:
     return {"idea": idea.to_dict(), "analysis": a.to_dict(),
             "plan": engine.plan(idea, a).to_dict(),
             "outcome": engine.store.outcome_for(idea.id) if idea.id else None}
+
+
+LOCK = threading.Lock()
+
+
+def _log_error(engine: Engine, method: str, path: str) -> str:
+    text = traceback.format_exc()
+    print(text, file=sys.stderr)
+    log = engine.store.home / "error.log"
+    try:
+        with open(log, "a", encoding="utf-8") as f:
+            f.write(f"--- {datetime.now().isoformat(timespec='seconds')} {method} {path}\n{text}\n")
+    except OSError:
+        pass
+    return str(log)
 
 
 def _settings(engine: Engine) -> dict:
@@ -71,7 +90,7 @@ def make_handler(engine: Engine) -> type[BaseHTTPRequestHandler]:
             length = int(self.headers.get("Content-Length") or 0)
             return json.loads(self.rfile.read(length) or b"{}")
 
-        def do_GET(self) -> None:
+        def _do_GET(self) -> None:
             path = self.path.split("?")[0]
             if path in ("/", "/index.html"):
                 self._send(200, (STATIC / "index.html").read_bytes(), "text/html; charset=utf-8")
@@ -102,7 +121,7 @@ def make_handler(engine: Engine) -> type[BaseHTTPRequestHandler]:
             else:
                 self._error(404, "not found")
 
-        def do_POST(self) -> None:
+        def _do_POST(self) -> None:
             path = self.path.split("?")[0]
             body = self._body()
             if path == "/api/analyze":  # analyze without saving (live what-if)
@@ -146,7 +165,7 @@ def make_handler(engine: Engine) -> type[BaseHTTPRequestHandler]:
             else:
                 self._error(404, "not found")
 
-        def do_PUT(self) -> None:
+        def _do_PUT(self) -> None:
             m = IDEA_PATH.match(self.path)
             if not m or m.group(2):
                 return self._error(404, "not found")
@@ -157,27 +176,60 @@ def make_handler(engine: Engine) -> type[BaseHTTPRequestHandler]:
             engine.store.update_idea(idea)
             self._json(_full(engine, engine.store.get_idea(idea.id)))
 
-        def do_DELETE(self) -> None:
+        def _do_DELETE(self) -> None:
             m = IDEA_PATH.match(self.path)
             if not m or m.group(2):
                 return self._error(404, "not found")
             engine.store.delete_idea(int(m.group(1)))
             self._json({"deleted": int(m.group(1))})
 
-        def handle_one_request(self) -> None:
+        # Requests are handled on separate threads (so an idle browser connection can't
+        # block the server), but ReFrame's logic runs one request at a time.
+        def do_GET(self) -> None:
+            self._run(self._do_GET)
+
+        def do_POST(self) -> None:
+            self._run(self._do_POST)
+
+        def do_PUT(self) -> None:
+            self._run(self._do_PUT)
+
+        def do_DELETE(self) -> None:
+            self._run(self._do_DELETE)
+
+        def _run(self, method) -> None:
             try:
-                super().handle_one_request()
+                with LOCK:
+                    method()
             except KeyError as e:
                 self._error(HTTPStatus.NOT_FOUND, str(e).strip("'\""))
             except (ValueError, TypeError) as e:
                 self._error(HTTPStatus.BAD_REQUEST, str(e))
+            except (BrokenPipeError, ConnectionResetError):
+                pass  # the browser went away; nothing to answer
+            except Exception as e:  # never drop the connection: report the error instead
+                log = _log_error(engine, self.command, self.path)
+                self._error(HTTPStatus.INTERNAL_SERVER_ERROR,
+                            f"ReFrame hit an unexpected error ({e.__class__.__name__}: {e}). "
+                            f"Details were saved to {log}. Please send that file to get it fixed.")
 
     return Handler
 
 
-def serve(engine: Engine, host: str = "127.0.0.1", port: int = 8765) -> None:
-    server = HTTPServer((host, port), make_handler(engine))
-    print(f"ReFrame running at http://{host}:{port}  (Ctrl+C to stop)")
+def serve(engine: Engine, host: str = "127.0.0.1", port: int = 8765, open_browser: bool = True) -> None:
+    try:
+        server = ThreadingHTTPServer((host, port), make_handler(engine))
+    except OSError:
+        sys.exit(f"Port {port} is already in use. ReFrame may already be running: open "
+                 f"http://{host}:{port} in your browser, or start on another port with "
+                 f"`reframe serve --port {port + 1}`.")
+    server.daemon_threads = True
+    url = f"http://{host}:{port}"
+    print(f"ReFrame is running at {url}\n"
+          "Keep this window open while you use ReFrame. Press Ctrl+C to stop.")
+    if open_browser:
+        import webbrowser
+        threading.Timer(0.8, lambda: webbrowser.open(url)).start()
     try:
         server.serve_forever()
     except KeyboardInterrupt:
