@@ -200,12 +200,18 @@ def cmd_insights(engine: Engine, args: argparse.Namespace) -> None:
 
 
 def cmd_brainstorm(engine: Engine, args: argparse.Namespace) -> None:
-    from .llm import LLMUnavailable, brainstorm
-    try:
-        ideas = brainstorm(args.topic, args.count, args.constraints or "",
-                           engine.store.load_api_key())
-    except LLMUnavailable as e:
-        sys.exit(str(e))
+    if args.offline:
+        from .templates import offline_brainstorm
+        ideas = offline_brainstorm(args.topic, args.count, engine.model)
+        print("Offline ideas from business-model templates. The market numbers are placeholders:\n"
+              "replace them with real data using `reframe edit <id> --set field=value`.")
+    else:
+        from .llm import LLMUnavailable, brainstorm
+        try:
+            ideas = brainstorm(args.topic, args.count, args.constraints or "",
+                               engine.store.load_api_key())
+        except LLMUnavailable as e:
+            sys.exit(str(e))
     for idea in ideas:
         if args.save:
             engine.store.add_idea(idea)
@@ -300,11 +306,13 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("--notes")
     s.set_defaults(func=cmd_outcome)
 
-    s = sub.add_parser("brainstorm", help="generate ideas with Claude (optional)")
+    s = sub.add_parser("brainstorm", help="generate ideas with Claude, or --offline without it")
     s.add_argument("topic")
     s.add_argument("--count", type=int, default=5)
     s.add_argument("--constraints")
     s.add_argument("--save", action="store_true")
+    s.add_argument("--offline", action="store_true",
+                   help="use built-in business-model templates (no API key or credit needed)")
     s.set_defaults(func=cmd_brainstorm)
 
     s = sub.add_parser("review", help="expert review of an idea with Claude (optional)")

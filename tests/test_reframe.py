@@ -167,3 +167,36 @@ def test_api_key_is_saved_and_removed(tmp_path):
     assert store.load_api_key() == "sk-ant-test"
     store.save_api_key(None)
     assert store.load_api_key() is None
+
+
+def test_offline_brainstorm_returns_best_rated_ideas():
+    from reframe.templates import TEMPLATES, offline_brainstorm
+    ideas = offline_brainstorm("dog groomers", 3)
+    assert len(ideas) == 3
+    assert all("dog groomers" in i.title for i in ideas)
+    scores = [analyze(i).score for i in ideas]
+    assert scores == sorted(scores, reverse=True)
+    all_scores = [analyze(i).score for i in offline_brainstorm("dog groomers", len(TEMPLATES))]
+    assert scores[-1] >= max(all_scores[3:])
+
+
+def test_no_credit_error_is_explained(monkeypatch):
+    anthropic = pytest.importorskip("anthropic")
+    httpx2 = pytest.importorskip("httpx2")
+    from reframe import llm
+    req = httpx2.Request("POST", "https://api.anthropic.com/v1/messages")
+    resp = httpx2.Response(400, request=req)
+    body = {"type": "error", "error": {"type": "invalid_request_error",
+            "message": "Your credit balance is too low to access the Anthropic API."}}
+    err = anthropic.BadRequestError(body["error"]["message"], response=resp, body=body)
+
+    class FakeClient:
+        class beta:
+            class messages:
+                @staticmethod
+                def create(**kw):
+                    raise err
+
+    monkeypatch.setattr(llm, "_client", lambda key=None: (anthropic, FakeClient))
+    with pytest.raises(llm.NoCredits, match="no API credit"):
+        llm.brainstorm("restaurants", 1, api_key="sk-ant-x")

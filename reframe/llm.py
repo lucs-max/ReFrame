@@ -32,6 +32,18 @@ class MissingAPIKey(LLMUnavailable):
     """No usable Anthropic API key: ask the user for one."""
 
 
+class NoCredits(LLMUnavailable):
+    """The key works but the Anthropic account has no credit left."""
+
+
+NO_CREDITS_HELP = (
+    "Your API key works, but your Anthropic account has no API credit.\n"
+    "The Claude API is paid per use and billed separately from a Claude.ai subscription.\n"
+    "Add credit at https://console.anthropic.com/settings/billing, then try again.\n"
+    "Or brainstorm for free without Claude:  reframe brainstorm \"<topic>\" --offline"
+)
+
+
 NO_KEY_HELP = (
     "This feature uses Claude and needs an Anthropic API key.\n"
     "1. Create a key at https://console.anthropic.com/settings/keys\n"
@@ -133,6 +145,8 @@ def _ask(system: str, prompt: str, schema: dict, api_key: str | None = None) -> 
     except anthropic.RateLimitError as e:
         raise LLMUnavailable("Rate limited by the Claude API; try again shortly.") from e
     except anthropic.APIStatusError as e:
+        if "credit balance" in str(e.message).lower():
+            raise NoCredits(NO_CREDITS_HELP) from e
         raise LLMUnavailable(f"Claude API error {e.status_code}: {e.message}") from e
     except anthropic.APIConnectionError as e:
         raise LLMUnavailable("Could not reach the Claude API.") from e

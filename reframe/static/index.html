@@ -107,6 +107,11 @@ textarea { min-height: 60px; }
       <div style="margin-top:6px;display:flex;gap:6px"><button class="primary" id="keySave">Save key &amp; retry</button>
         <button id="keyCancel">Cancel</button></div>
     </div>
+    <div id="offBox" class="card" style="display:none;padding:12px">
+      <div id="offMsg" style="font-size:13px;margin-bottom:8px"></div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap"><button class="primary" id="offGo">Brainstorm offline instead</button>
+        <button id="offCancel">Close</button></div>
+    </div>
     <div id="list"></div>
   </aside>
   <main id="main"><div class="empty">Create an idea or pick one on the left.</div></main>
@@ -321,14 +326,27 @@ $("#insightsBtn").onclick = async () => {
       <td>${Math.abs(l.shift) > .01 ? (l.shift > 0 ? "+" : "") + l.shift.toFixed(2) : "—"}</td></tr>`).join("")}</table></div>`;
 };
 
-$("#brainBtn").onclick = async () => {
+async function runBrainstorm(offline) {
   const topic = $("#brainTopic").value.trim(); if (!topic) return toast("Enter a topic first");
-  const b = $("#brainBtn"); b.disabled = true; b.textContent = "Thinking...";
-  try { const ideas = await api("/api/brainstorm", { method: "POST", body: { topic, count: 3 } });
-    toast(`Added ${ideas.length} ideas`); await loadList(); }
-  catch (e) { toast(e.message.split("\n")[0]); if (e.needs_key) { $("#keyBox").style.display = "block"; $("#keyInput").focus(); } }
+  const b = $("#brainBtn"); b.disabled = true; b.textContent = offline ? "Generating..." : "Thinking...";
+  try { const ideas = await api("/api/brainstorm", { method: "POST", body: { topic, count: 3, offline } });
+    $("#offBox").style.display = "none";
+    toast(offline ? `Added ${ideas.length} template ideas: edit their numbers in the Inputs tab` : `Added ${ideas.length} ideas`);
+    await loadList(); }
+  catch (e) {
+    if (e.needs_key) { toast(e.message.split("\n")[0]); $("#keyBox").style.display = "block"; $("#keyInput").focus(); }
+    else if (e.needs_credits || e.offline_available) {
+      $("#offMsg").innerHTML = e.needs_credits
+        ? `Your API key works, but your Anthropic account has no API credit (it's billed separately from a Claude.ai subscription).
+           <a href="https://console.anthropic.com/settings/billing" target="_blank" rel="noopener">Add credit</a> and try again, or brainstorm offline for free.`
+        : esc(e.message) + "<br>You can brainstorm offline instead.";
+      $("#offBox").style.display = "block"; }
+    else toast(e.message); }
   finally { b.disabled = false; b.textContent = "Generate 3 ideas"; }
-};
+}
+$("#brainBtn").onclick = () => runBrainstorm(false);
+$("#offGo").onclick = () => runBrainstorm(true);
+$("#offCancel").onclick = () => { $("#offBox").style.display = "none"; };
 $("#keySave").onclick = async () => {
   try { await api("/api/key", { method: "POST", body: { key: $("#keyInput").value } });
     $("#keyInput").value = ""; $("#keyBox").style.display = "none"; toast("Key saved"); $("#brainBtn").click(); }

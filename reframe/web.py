@@ -78,14 +78,20 @@ def make_handler(engine: Engine) -> type[BaseHTTPRequestHandler]:
                 idea = engine.store.add_idea(Idea.from_dict(body))
                 self._json(_full(engine, idea), 201)
             elif path == "/api/brainstorm":
-                from .llm import LLMUnavailable, MissingAPIKey, brainstorm
-                try:
-                    ideas = brainstorm(body.get("topic", ""), int(body.get("count", 3)),
-                                       api_key=engine.store.load_api_key())
-                except MissingAPIKey as e:
-                    return self._json({"error": str(e), "needs_key": True}, 401)
-                except LLMUnavailable as e:
-                    return self._error(503, str(e))
+                from .llm import LLMUnavailable, MissingAPIKey, NoCredits, brainstorm
+                topic, count = body.get("topic", ""), int(body.get("count", 3))
+                if body.get("offline"):
+                    from .templates import offline_brainstorm
+                    ideas = offline_brainstorm(topic, count, engine.model)
+                else:
+                    try:
+                        ideas = brainstorm(topic, count, api_key=engine.store.load_api_key())
+                    except MissingAPIKey as e:
+                        return self._json({"error": str(e), "needs_key": True}, 401)
+                    except NoCredits as e:
+                        return self._json({"error": str(e), "needs_credits": True}, 402)
+                    except LLMUnavailable as e:
+                        return self._json({"error": str(e), "offline_available": True}, 503)
                 saved = [engine.store.add_idea(i) for i in ideas]
                 self._json([_summary(engine, i) for i in saved], 201)
             elif path == "/api/key":  # save the Anthropic API key locally

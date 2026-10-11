@@ -85,6 +85,15 @@ reframe brainstorm "tools for independent restaurants" --count 5 --save
 reframe review 1   # hidden risks, opportunities, questions to validate, suspicious inputs
 ```
 
+The Claude API is paid per use and billed separately from a Claude.ai subscription. If you
+see "credit balance is too low", add credit at https://console.anthropic.com/settings/billing.
+No key or credit? Brainstorm offline with business-model templates (the numbers are
+placeholders to replace with real data):
+
+```
+reframe brainstorm "tools for small restaurants" --offline --save
+```
+
 In the web app, the first time you brainstorm it asks for the key and saves it the same way.
 An `ANTHROPIC_API_KEY` environment variable, if set, takes priority over the saved key.
 Remove the saved key with `reframe set-key --remove`.
