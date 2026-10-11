@@ -121,25 +121,53 @@ minute without an account, so big `--all` scans may show a temporary rate-limit 
 These are *proxies* for supply and demand, not sales data. They make your numbers more
 grounded and comparable, but customer interviews and real sales still beat any signal.
 
-### 5. Two modes: offline (default) or Claude
+### 5. Three modes: offline (default), local AI, or Claude
 
-| | **Offline mode** (default) | **Claude mode** |
-|---|---|---|
-| API key / internet | none needed; never contacts Anthropic | Anthropic API key with credit |
-| Cost | free | paid per use |
-| Brainstorm | business-model templates matched to your topic's audience (businesses vs consumers), ranked by ReFrame's AI | Claude invents ideas and estimates market numbers for your topic |
-| Review | rule-based checks + sensitivity analysis (which inputs your profit depends on most) | Claude's written critique |
-| Scoring, ranking, plans, learning | same in both modes (always offline) | same |
+ReFrame's own AI (scoring, explanations, what-if experiments, learning from outcomes) and
+the planner **always run on your PC**. The mode only decides who *writes* brainstormed
+ideas and reviews:
+
+| | **Offline** (default) | **Local AI** | **Claude** |
+|---|---|---|---|
+| Runs where | your PC, no AI model | a language model on **your PC** (Ollama or LM Studio) | Anthropic's cloud |
+| Needs | nothing | a free local AI app + a model download (~2–5 GB) | API key with credit |
+| Cost | free | free | paid per use |
+| Your ideas leave your PC? | no | no | yes (sent to Anthropic) |
+| Brainstorm | business-model templates matched to your topic | the local model invents ideas and estimates numbers | Claude invents ideas |
+| Review | rule-based checks + sensitivity analysis | local model's critique + the same sensitivity analysis | Claude's critique |
 
 ```
 reframe mode            # show the current mode
-reframe mode offline    # never use the Anthropic API (default)
-reframe mode claude     # use Claude for brainstorm and review
+reframe mode offline    # built-in templates, no AI model (default)
+reframe mode local      # language model on this PC
+reframe mode claude     # Claude API
 reframe --offline ...   # force offline for one command, whatever the saved mode
 ```
 
 Setting the environment variable `REFRAME_OFFLINE=1` locks ReFrame to offline mode. In the
-web app, use the mode switch in the top bar.
+web app, use the mode menu in the top bar.
+
+**Setting up Local AI (one time):**
+
+1. Install **Ollama** from https://ollama.com (Windows, Mac, Linux). It runs in the background.
+2. Download a model in a terminal: `ollama pull llama3.2` (about 2 GB, runs on most PCs).
+   With 16 GB+ RAM or a graphics card, `ollama pull qwen2.5:7b` gives better ideas.
+3. `reframe mode local`, then `reframe local` to check it's found.
+
+Prefer **LM Studio** (https://lmstudio.ai)? Download a model, start its local server
+(Developer tab → Start Server) and ReFrame finds it automatically at `localhost:1234`. Other
+OpenAI-compatible local servers (llama.cpp `llama-server`, Jan, LocalAI) work too:
+
+```
+reframe local                                    # status, installed models
+reframe local --model qwen2.5:7b                 # choose a model (default: auto-pick)
+reframe local --provider openai --url http://localhost:8080/v1   # any compatible server
+```
+
+Local models are smaller than cloud models, so ReFrame checks every answer, repairs
+common slips (extra text around the JSON, "15" meaning 15%, unknown categories), keeps
+every number in a sensible range, and retries once if the reply is unusable. On a PC
+without a graphics card, a brainstorm can take a minute or two.
 
 ```
 reframe brainstorm "tools for small restaurants" --count 5 --save
@@ -147,7 +175,8 @@ reframe review 1   # hidden risks, opportunities, questions to validate, inputs 
 ```
 
 Offline brainstorm numbers are starting guesses for each business model, not research.
-Replace them with real data (Inputs tab or `reframe edit`) and the scores and plans follow.
+In every mode, replace guesses with real data (Inputs tab, `reframe edit`, or live market
+data) and the scores and plans follow.
 
 **Using Claude mode.** Install the `ai` extra, save an Anthropic API key (create one at
 https://console.anthropic.com/settings/keys) and switch modes:
@@ -166,7 +195,8 @@ Claude requests use the server-side refusal fallback (`fallbacks: "default"`).
 
 ## Install
 
-Requires Python 3.9+. The core has no dependencies, and offline mode needs nothing else.
+Requires Python 3.9+. The core has no dependencies. Offline and local AI modes need nothing
+else from pip (local AI needs the free Ollama or LM Studio app).
 
 ```
 pip install -e .          # or: pip install -e ".[ai,dev]"

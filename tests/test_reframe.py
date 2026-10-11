@@ -402,3 +402,146 @@ def test_unreachable_host_is_tried_once_per_run(tmp_path):
     for title in ("A invoice app", "B invoice app", "C invoice app"):
         live.scan(Idea(title, category="mobile_app", keywords=title), fetch)
     assert sum("itunes.apple.com" in u for u in calls) == 1
+
+
+# -- local AI (Ollama / LM Studio) ----------------------------------------------------
+
+def _fake_local_server(kind, replies, models=("llama3.2:latest",), reject_schema=False):
+    """Start a fake Ollama ('ollama') or OpenAI-compatible ('openai') server."""
+    from http.server import BaseHTTPRequestHandler
+    seen = []
+
+    class H(BaseHTTPRequestHandler):
+        def log_message(self, *a):
+            pass
+
+        def _send(self, code, obj):
+            body = json.dumps(obj).encode()
+            self.send_response(code)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+
+        def do_GET(self):
+            if kind == "ollama" and self.path == "/api/tags":
+                return self._send(200, {"models": [{"name": m} for m in models]})
+            if kind == "openai" and self.path == "/v1/models":
+                return self._send(200, {"data": [{"id": m} for m in models]})
+            self._send(404, {})
+
+        def do_POST(self):
+            body = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
+            seen.append(body)
+            if reject_schema and "response_format" in body:
+                return self._send(400, {"error": "response_format not supported"})
+            text = replies.pop(0) if len(replies) > 1 else replies[0]
+            if kind == "ollama" and self.path == "/api/chat":
+                return self._send(200, {"message": {"role": "assistant", "content": text}, "done": True})
+            if kind == "openai" and self.path == "/v1/chat/completions":
+                return self._send(200, {"choices": [{"message": {"role": "assistant", "content": text}}]})
+            self._send(404, {})
+
+    server = HTTPServer(("127.0.0.1", 0), H)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    base = f"http://127.0.0.1:{server.server_port}" + ("/v1" if kind == "openai" else "")
+    return server, base, seen
+
+
+MESSY_IDEAS = """Sure! Here are your ideas:
+```json
+{"ideas": [
+  {"title": "Shift planner for cafes", "description": "Staff scheduling", "category": "SaaS",
+   "recurring_revenue": true,
+   "market": {"potential_customers": "25,000", "demand_growth": 15, "willingness_to_pay": "$39",
+              "competitors": 12, "differentiation": 0.6, "yearly_churn": "30%"}},
+  {"title": "Coffee bean subscription", "category": "food delivery", "market": {"willingness_to_pay": -5}},
+  {"description": "no title, should be skipped"}
+]}
+```
+Hope this helps!"""
+
+
+def test_local_ai_brainstorm_with_ollama_repairs_messy_output(tmp_path):
+    server, base, seen = _fake_local_server("ollama", ["not json at all", MESSY_IDEAS])
+    try:
+        engine = Engine(Store(tmp_path))
+        engine.set_live(False)
+        engine.set_mode("local")
+        engine.set_local(provider="ollama", url=base)
+        assert engine.local_status()["ready"]
+        ideas = engine.brainstorm("cafes", 3)
+    finally:
+        server.shutdown()
+    assert len(seen) == 2, "broken JSON should trigger exactly one retry"
+    assert seen[0]["model"] == "llama3.2:latest" and seen[0]["format"]["type"] == "object"
+    assert [i.title for i in ideas] == ["Shift planner for cafes", "Coffee bean subscription"]
+    a, b = ideas
+    assert a.category == "saas" and a.market.potential_customers == 25_000
+    assert a.market.demand_growth == pytest.approx(0.15)   # "15" meant 15%
+    assert a.market.willingness_to_pay == 39 and a.market.yearly_churn == pytest.approx(0.30)
+    assert b.category == "saas" and b.market.willingness_to_pay >= 0.5  # clamped into range
+    assert all(i.keywords == "cafes" for i in ideas)
+
+
+def test_local_ai_review_with_openai_compatible_server(tmp_path):
+    review_json = json.dumps({"summary": "Solid niche.", "hidden_risks": ["Seasonality"],
+                              "opportunities": "Upsell analytics", "questions_to_validate": [],
+                              "suspicious_inputs": []})
+    server, base, seen = _fake_local_server("openai", [review_json], models=("qwen2.5-7b-instruct",),
+                                            reject_schema=True)
+    try:
+        engine = Engine(Store(tmp_path))
+        engine.set_mode("local")
+        engine.set_local(provider="openai", url=base)
+        idea = engine.store.add_idea(make_idea())
+        r = engine.review(idea)
+    finally:
+        server.shutdown()
+    assert "response_format" in seen[0] and "response_format" not in seen[1]  # fell back
+    assert r["source"] == "local" and r["model"] == "qwen2.5-7b-instruct"
+    assert r["summary"] == "Solid niche." and r["opportunities"] == ["Upsell analytics"]
+    assert r["sensitivity"], "local reviews keep ReFrame's numeric sensitivity analysis"
+
+
+def test_local_ai_not_running_gives_setup_help(tmp_path):
+    from reframe.local_llm import LocalAIUnavailable
+    engine = Engine(Store(tmp_path))
+    engine.set_live(False)
+    engine.set_mode("local")
+    engine.set_local(provider="ollama", url="http://127.0.0.1:9")  # nothing listens on port 9
+    assert not engine.local_status()["ready"]
+    with pytest.raises(LocalAIUnavailable, match="ollama pull"):
+        engine.brainstorm("cafes", 2)
+
+
+def test_local_ai_missing_model_is_reported(tmp_path):
+    server, base, _ = _fake_local_server("ollama", ["{}"], models=("mistral:latest",))
+    try:
+        from reframe.local_llm import detect
+        assert detect("ollama", base, "")["model"] == "mistral:latest"  # auto-picks installed model
+        status = detect("ollama", base, "qwen2.5:7b")
+    finally:
+        server.shutdown()
+    assert not status["ready"] and "ollama pull qwen2.5:7b" in status["message"]
+
+
+def test_local_mode_never_loads_anthropic(tmp_path):
+    import subprocess
+    import sys
+    code = f"""
+import sys
+from pathlib import Path
+from reframe.engine import Engine
+from reframe.storage import Store
+e = Engine(Store(Path({str(tmp_path)!r})))
+e.set_mode("local"); e.set_local(provider="ollama", url="http://127.0.0.1:9"); e.set_live(False)
+try:
+    e.brainstorm("x", 1)
+except Exception:
+    pass
+assert "anthropic" not in sys.modules
+print("ok")
+"""
+    r = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True)
+    assert r.stdout.strip() == "ok", r.stderr

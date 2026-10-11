@@ -79,6 +79,8 @@ def make_handler(engine: Engine) -> type[BaseHTTPRequestHandler]:
                 self._json({"categories": CATEGORIES, "defaults": MarketInputs().to_dict()})
             elif path == "/api/settings":
                 self._json(_settings(engine))
+            elif path == "/api/local":
+                self._json(engine.local_status() | engine.local_settings())
             elif path == "/api/ideas":
                 self._json([_summary(engine, i) for i in engine.store.list_ideas()])
             elif path == "/api/insights":
@@ -124,6 +126,9 @@ def make_handler(engine: Engine) -> type[BaseHTTPRequestHandler]:
                 if "live" in body:
                     engine.set_live(bool(body["live"]))
                 self._json(_settings(engine))
+            elif path == "/api/local":
+                engine.set_local(body.get("provider"), body.get("url"), body.get("model"))
+                self._json(engine.local_status() | engine.local_settings())
             elif (m := IDEA_PATH.match(path)) and m.group(2) == "/market":
                 idea = engine.store.get_idea(int(m.group(1)))
                 engine.scan_market(idea, apply=bool(body.get("apply")), refresh=bool(body.get("refresh")))

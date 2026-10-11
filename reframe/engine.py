@@ -12,16 +12,19 @@ from .planner import BuildPlan, build_plan
 from .storage import Store
 
 
-MODES = ("offline", "claude")
+MODES = ("offline", "local", "claude")
 
 
 class Engine:
     """Shared logic for the CLI and web app.
 
-    Mode ``offline`` (the default) never contacts Anthropic: brainstorming uses
-    business-model templates and reviews use ReFrame's rule-based reviewer.
-    Mode ``claude`` uses the Claude API for those two features (needs a key
-    with API credit). Scoring, ranking, plans and learning are always offline.
+    Modes decide who writes brainstormed ideas and reviews:
+
+    * ``offline`` (default): built-in templates and the rule-based reviewer.
+    * ``local``: a language model running on this PC (Ollama or LM Studio).
+    * ``claude``: the Claude API (needs an Anthropic key with API credit).
+
+    Scoring, ranking, plans and learning always run locally in every mode.
     """
 
     def __init__(self, store: Store | None = None, force_offline: bool = False):
@@ -94,6 +97,9 @@ class Engine:
         if self.mode == "offline":
             from .templates import offline_brainstorm
             ideas = offline_brainstorm(topic, count, self.model)
+        elif self.mode == "local":
+            from . import local_llm
+            ideas = local_llm.brainstorm(topic, count, constraints, self.store.load_config())
         else:
             from .llm import brainstorm
             ideas = brainstorm(topic, count, constraints, self.store.load_api_key())
@@ -107,9 +113,41 @@ class Engine:
         if self.mode == "offline":
             from .reviewer import offline_review
             return offline_review(idea, analysis)
+        if self.mode == "local":
+            from . import local_llm
+            from .reviewer import offline_review
+            result = local_llm.review(idea, analysis, self.store.load_config())
+            # Keep the exact numeric sensitivity analysis alongside the model's opinion.
+            return result | {"sensitivity": offline_review(idea, analysis)["sensitivity"]}
         from .llm import review
         result = review(idea, analysis, self.store.load_api_key())
         return result | {"source": "claude"}
+
+    # -- local AI ---------------------------------------------------------------------
+    def local_settings(self) -> dict:
+        c = self.store.load_config()
+        return {"local_provider": c.get("local_provider", "auto"), "local_url": c.get("local_url", ""),
+                "local_model": c.get("local_model", "")}
+
+    def set_local(self, provider: str | None = None, url: str | None = None,
+                  model: str | None = None) -> None:
+        from .local_llm import PROVIDERS
+        changes = {}
+        if provider is not None:
+            if provider not in PROVIDERS:
+                raise ValueError(f"Provider must be one of: {', '.join(PROVIDERS)}")
+            changes["local_provider"] = provider
+        if url is not None:
+            changes["local_url"] = url.strip()
+        if model is not None:
+            changes["local_model"] = model.strip()
+        if changes:
+            self.store.save_config(**changes)
+
+    def local_status(self) -> dict:
+        from .local_llm import detect
+        s = self.local_settings()
+        return detect(s["local_provider"], s["local_url"], s["local_model"])
 
     # -- live market data ---------------------------------------------------------
     @property

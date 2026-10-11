@@ -200,10 +200,28 @@ def cmd_insights(engine: Engine, args: argparse.Namespace) -> None:
         print(f"  {row['label']:<26} {row['learned']:+.2f}{shift}")
 
 
+def cmd_local(engine: Engine, args: argparse.Namespace) -> None:
+    engine.set_local(args.provider, args.url, args.model)
+    s = engine.local_settings()
+    print(f"Local AI settings: provider={s['local_provider']}, "
+          f"url={s['local_url'] or '(default)'}, model={s['local_model'] or '(auto)'}")
+    status = engine.local_status()
+    print(("Ready: " if status["ready"] else "Not ready: ") + status["message"])
+    if status["models"]:
+        print("Installed models: " + ", ".join(status["models"]))
+    if not status["ready"]:
+        from .local_llm import SETUP_HELP
+        print("\n" + SETUP_HELP)
+    elif engine.mode != "local":
+        print("Turn it on with: reframe mode local")
+
+
 def cmd_brainstorm(engine: Engine, args: argparse.Namespace) -> None:
     from .llm import LLMUnavailable  # importing this never loads the Anthropic SDK
     if args.offline:
         engine.force_offline = True
+    if engine.mode == "local":
+        print("Thinking with your local AI model... (this can take a minute or two on a CPU)")
     try:
         ideas = engine.brainstorm(args.topic, args.count, args.constraints or "")
     except LLMUnavailable as e:  # only possible in claude mode
@@ -225,7 +243,10 @@ def cmd_review(engine: Engine, args: argparse.Namespace) -> None:
         r = engine.review(idea)
     except LLMUnavailable as e:  # only possible in claude mode
         sys.exit(f"{e}\n\nTip: switch to offline mode with `reframe mode offline`.")
-    source = "ReFrame offline reviewer" if r.get("source") == "offline" else "Claude"
+    if engine.mode == "local":
+        print("Reviewing with your local AI model... (this can take a minute or two on a CPU)")
+    source = {"offline": "ReFrame offline reviewer", "local": f"local AI ({r.get('model', '')})"}.get(
+        r.get("source"), "Claude")
     print(f"\nReview by {source}\n\n{r['summary']}\n")
     for key, label in (("hidden_risks", "Hidden risks"), ("opportunities", "Opportunities"),
                        ("questions_to_validate", "Questions to validate"),
@@ -246,12 +267,21 @@ def cmd_mode(engine: Engine, args: argparse.Namespace) -> None:
     if args.mode:
         engine.set_mode(args.mode)
     if engine.mode == "offline":
-        print("Mode: offline. ReFrame never contacts Anthropic and needs no API key.\n"
-              "Brainstorming uses built-in templates; reviews use the offline reviewer.")
+        print("Mode: offline. No AI model and no API: brainstorming uses built-in templates,\n"
+              "reviews use the rule-based reviewer. Nothing leaves your PC except optional\n"
+              "live market lookups (`reframe live off` to stop those).")
+    elif engine.mode == "local":
+        status = engine.local_status()
+        print("Mode: local AI. Brainstorm and review use a language model running on this PC\n"
+              "(Ollama or LM Studio). No API key, no cost, your ideas stay on your computer.")
+        print(("  Ready: " if status["ready"] else "  Not ready: ") + status["message"])
+        if not status["ready"]:
+            from .local_llm import SETUP_HELP
+            print("\n" + SETUP_HELP)
     else:
         key = "saved" if engine.store.load_api_key() else "not saved (run `reframe set-key`)"
         print(f"Mode: claude. Brainstorm and review use the Claude API (paid per use). API key: {key}.\n"
-              "Switch back any time with `reframe mode offline`.")
+              "Switch back any time with `reframe mode offline` or `reframe mode local`.")
 
 
 def cmd_set_key(engine: Engine, args: argparse.Namespace) -> None:
@@ -428,9 +458,16 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("--notes")
     s.set_defaults(func=cmd_outcome)
 
-    s = sub.add_parser("mode", help="show or set the mode: offline (default, no API) or claude")
-    s.add_argument("mode", nargs="?", choices=["offline", "claude"])
+    s = sub.add_parser("mode", help="show or set the mode: offline (default), local (AI on this PC) or claude")
+    s.add_argument("mode", nargs="?", choices=["offline", "local", "claude"])
     s.set_defaults(func=cmd_mode)
+
+    s = sub.add_parser("local", help="set up / check the local AI (Ollama or LM Studio)")
+    s.add_argument("--provider", choices=["auto", "ollama", "openai"],
+                   help="auto (default), ollama, or openai for LM Studio / llama.cpp / other compatible servers")
+    s.add_argument("--url", help="server address, e.g. http://localhost:11434 or http://localhost:1234/v1")
+    s.add_argument("--model", help="model name, e.g. llama3.2 or qwen2.5:7b (blank = auto)")
+    s.set_defaults(func=cmd_local)
 
     s = sub.add_parser("brainstorm", help="generate ideas for a topic (offline or with Claude)")
     s.add_argument("topic")
