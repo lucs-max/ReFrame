@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="ReFrame logo">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#4c6ef5"/>
+      <stop offset="1" stop-color="#7048e8"/>
+    </linearGradient>
+  </defs>
+  <rect x="16" y="16" width="480" height="480" rx="112" fill="url(#bg)"/>
+  <g fill="none" stroke="#fff" stroke-width="30" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M118 206V158q0-40 40-40h48"/>
+    <path d="M306 118h48q40 0 40 40v48"/>
+    <path d="M118 306v48q0 40 40 40h48"/>
+    <path d="M394 306v48q0 40-40 40h-48"/>
+    <path d="M168 326l62-62 44 34 66-86"/>
+  </g>
+  <circle cx="346" cy="206" r="30" fill="#ffd43b"/>
+  <circle cx="346" cy="206" r="30" fill="none" stroke="#fff" stroke-width="10"/>
+</svg>

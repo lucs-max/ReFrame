@@ -1,263 +1,204 @@
-# ReFrame: idea lab
+<div align="center">
 
-ReFrame helps you **write down ideas, find out which ones can make money, and follow a
-step-by-step plan to build them**. It has its own AI that scores every idea, explains
-**what works and what doesn't**, and **learns from real results** each time you
-record whether a project succeeded or failed.
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/wordmark-dark.svg">
+  <img src="docs/assets/wordmark-light.svg" alt="ReFrame" width="420">
+</picture>
 
-```
+### Turn ideas into ranked, profitable, step-by-step plans.
+
+ReFrame scores your business ideas with a **supply & demand model** and a **self-learning AI**,
+shows **what works and what doesn't**, checks them against **live market data**, and gives
+you a **step-by-step plan with code** to build the best one. It runs **on your own PC**.
+
+[![Tests](https://github.com/lucs-max/ReFrame/actions/workflows/tests.yml/badge.svg)](https://github.com/lucs-max/ReFrame/actions/workflows/tests.yml)
+![Python 3.9+](https://img.shields.io/badge/python-3.9%2B-3776ab)
+![No dependencies](https://img.shields.io/badge/dependencies-none-2b8a3e)
+![Runs locally](https://img.shields.io/badge/runs-on%20your%20PC-5c7cfa)
+![Windows · macOS · Linux](https://img.shields.io/badge/platform-Windows%20%C2%B7%20macOS%20%C2%B7%20Linux-495057)
+
+[**Quick start**](#quick-start) · [**Tutorials**](#tutorials) · [**Features**](#features) · [**How it works**](docs/how-it-works.md) · [**Commands**](docs/cli-reference.md)
+
+<br>
+
+<img src="docs/images/analysis.png" alt="ReFrame analyzing an idea: success score, optimal price, 3-year projection, what works and what doesn't" width="900">
+
+</div>
+
+## Quick start
+
+You need [Python 3.9+](https://www.python.org/downloads/) (on Windows, tick **"Add Python to PATH"** when installing) and [Git](https://git-scm.com/downloads).
+
+```bash
+git clone https://github.com/lucs-max/ReFrame.git
+cd ReFrame
+pip install -e .
 reframe demo        # load 4 example ideas
-reframe rank        # which idea is most likely to succeed and make the most profit?
-reframe analyze 1   # market, pricing, profit, strengths, risks, what-if experiments
-reframe plan 1      # step-by-step build plan with commands and starter code
-reframe serve       # the same, as a web app at http://127.0.0.1:8765
+reframe serve       # opens the app in your browser
 ```
 
-## How it works
+**On Windows** you can also just double-click **`Start ReFrame.bat`**. Keep the terminal
+window open while you use the app.
 
-```
- your idea + market inputs
-          │
-          ▼
- ┌──────────────────────┐   optimal price, customers, revenue, profit,
- │ Supply & demand model│── break-even, LTV/CAC, market gap, funding gap
- └──────────────────────┘
-          │ features
-          ▼
- ┌──────────────────────┐   success score, what works / what doesn't,
- │ ReFrame AI (learns)  │── what-if experiments
- └──────────────────────┘
-          │                  ▲
-          ▼                  │ record real outcomes → retrain
- ┌──────────────────────┐    │
- │ Step-by-step planner │── Validate → Fix risks → Build MVP → Launch → Grow
- └──────────────────────┘
-```
+New to the command line? Follow **[Tutorial 1: Install and start ReFrame](docs/tutorials/01-install.md)**.
 
-### 1. Supply & demand model (`reframe/market.py`)
-- **Demand:** your *willingness to pay* input is treated as the median price buyers accept.
-  Price sensitivity (elasticity) controls how fast buyers drop off as the price goes up.
-- **Supply:** your share of the market shrinks with every competitor and grows with
-  differentiation. A new entrant realistically wins a small part (10%) of its "fair share".
-- **Growth & adoption:** the market grows every year and your adoption ramps up over three years.
-- **Pricing:** ReFrame searches for the price that **maximizes 3-year profit**. This is
-  the price used in the plan.
-- **Outputs:** customers, revenue, costs and profit per year, ROI, break-even month,
-  gross margin, LTV/CAC, buyers per competitor, and how much funding you're short.
+## Features
 
-### 2. ReFrame AI (`reframe/brain.py`)
-An interpretable logistic-regression model over 12 features (market gap, growth,
-competition, differentiation, margin, LTV/CAC, profit, time to break even,
-complexity, skill fit, funding, recurring revenue).
+<table>
+<tr>
+<td width="50%" valign="top">
 
-- It **starts from built-in priors**, common startup knowledge about what tends to work.
-- When you run `reframe outcome <id> success|failure`, it **retrains** on every recorded
-  outcome. It is regularized toward the priors so a handful of results can't make it
-  overconfident.
-- Every score is **fully explained**: each factor's exact contribution, plus advice on
-  the biggest risks.
-- **What-if experiments** re-run the whole analysis with changes you control (sharper
-  differentiation, cheaper acquisition, a niche market, lower churn…) and rank them by impact.
-- `reframe insights` shows what the model has learned and how well it explains your history.
+### 📊 Supply & demand analysis
+For every idea, ReFrame finds the **price that maximizes profit** and projects customers,
+revenue, costs and profit over 3 years. You also get break-even, LTV/CAC, margins, and
+how crowded the market is.
 
-### 3. Step-by-step planner (`reframe/planner.py`)
-Plans adapt to the idea's category (`saas`, `mobile_app`, `ecommerce`, `marketplace`,
-`content`, `physical_product`, `service`, `api`) and to the analysis:
+</td>
+<td width="50%" valign="top">
 
-1. **Validate demand:** customer interviews and a ready-to-deploy smoke-test landing page.
-2. **Fix the biggest risks:** steps added only for the risks the AI flagged.
-3. **Build the MVP:** concrete commands and starter code (FastAPI, Expo/React Native,
-   Stripe checkout, marketplace SQL schema, API-key metering…).
-4. **Launch:** at the model's optimal price.
-5. **Measure & grow:** track against the projection and feed results back to the AI.
+### 🧠 An AI that explains itself and learns
+A transparent model scores each idea and lists exactly **what pushes it up or down**.
+Record real results and it **retrains on your history**.
 
-Each step has *why*, a checklist, and a *done when* condition. `reframe plan 1 --out plan.md`
-writes it as a Markdown checklist. In the web app you can tick steps off.
+</td>
+</tr>
+<tr>
+<td valign="top">
 
-### 4. Live market data (`reframe/live.py`)
-ReFrame checks your inputs against the live market using free public sources. It needs
-internet but **no API keys and no Anthropic account**, so it works in offline mode too.
+### 🧪 What-if experiments
+"What if I target a niche? Cut acquisition cost? Improve retention?" ReFrame re-runs
+everything and ranks the changes by impact.
 
-| Source | What it measures | Inputs it calibrates |
+</td>
+<td valign="top">
+
+### 🗺️ Step-by-step plans with code
+Validate → fix risks → build → launch → grow. Each step has a checklist and a clear
+finish line, plus starter code for 8 kinds of business.
+
+</td>
+</tr>
+<tr>
+<td valign="top">
+
+### 📡 Live market data
+Wikipedia interest, Hacker News trends, App Store competitors and GitHub alternatives
+**calibrate your numbers**. No API keys needed.
+
+</td>
+<td valign="top">
+
+### 🔒 Runs on your PC
+Works fully offline. Optional **local AI** (Ollama / LM Studio) writes ideas and reviews
+on your own computer. Claude is optional, never required.
+
+</td>
+</tr>
+</table>
+
+## See it in action
+
+| Step-by-step plan | Critical review |
+|---|---|
+| <img src="docs/images/plan.png" alt="Step-by-step build plan with checklists"> | <img src="docs/images/review.png" alt="Review with risks, opportunities and sensitivity analysis"> |
+| **Every step has why, a checklist, code and "done when".** | **Shows which guesses your profit depends on most.** |
+
+| Live market data | What the AI has learned |
+|---|---|
+| <img src="docs/images/market.png" alt="Market tab with live signals and suggested updates"> | <img src="docs/images/insights.png" alt="AI insights: the effect of each factor on success"> |
+| **Live signals suggest updates to your numbers** *(example data)*. | **Retrains every time you record a real outcome.** |
+
+<details>
+<summary><b>More screenshots:</b> brainstorming, dark mode, phone</summary>
+<br>
+
+**Brainstorm ideas for a topic.** Offline mode works without any AI model.
+<img src="docs/images/brainstorm.png" alt="Brainstormed ideas for dog groomers">
+
+**Dark mode** follows your system setting.
+<img src="docs/images/dark-mode.png" alt="ReFrame in dark mode">
+
+**Works on phones.**
+<p><img src="docs/images/mobile.png" alt="ReFrame on a phone" width="300"></p>
+
+</details>
+
+## Tutorials
+
+| | Tutorial | You'll learn to… |
 |---|---|---|
-| Wikipedia page views (last 24 complete months) | interest in the topic and its year-over-year growth | market growth |
-| Hacker News stories (this year vs last year) | discussion trend, strongest for tech topics | market growth |
-| Apple App Store search | established competitors, their ratings and prices | competitors, willingness to pay (apps), differentiation room |
-| GitHub search | open-source alternatives | competitors (software ideas) |
+| 1 | [Install and start ReFrame](docs/tutorials/01-install.md) | install on Windows, Mac or Linux and open the app |
+| 2 | [Analyze your first idea](docs/tutorials/02-first-idea.md) | enter an idea, read the analysis, improve it with what-ifs |
+| 3 | [Brainstorm ideas](docs/tutorials/03-brainstorm.md) | generate and rank ideas for any topic |
+| 4 | [Follow the step-by-step plan](docs/tutorials/04-build-plan.md) | work through the plan and export it as a checklist |
+| 5 | [Review and validate](docs/tutorials/05-review.md) | find which guesses matter most and check them first |
+| 6 | [Use live market data](docs/tutorials/06-live-market.md) | calibrate ideas with real-time market signals |
+| 7 | [Teach the AI](docs/tutorials/07-teach-the-ai.md) | record real results so the AI learns what works for you |
+| 8 | [Run an AI model on your PC](docs/tutorials/08-local-ai.md) | set up Ollama or LM Studio for local AI |
 
-**The calibration algorithm.** Every signal proposes a value for an input, with a confidence
-based on how much data backs it (more page views, more stories, more apps → higher
-confidence). The suggestion is `current + confidence × (signal − current)`: thin evidence
-nudges your number, strong evidence moves it most of the way. Your own knowledge isn't
-thrown away, and one noisy reading can't swing the result.
+## Three modes
 
-**Consistency.** Fixed time windows (complete months, whole days), medians instead of
-averages, and a 12-hour cache mean repeat scans give the same answer. A capped App Store
-search (50 results) is treated as a minimum and never lowers your competitor count.
-
-**Market pulse.** A 0–100% summary of the live data (growth up, saturation down, weak
-competitor ratings = room to win), shown next to the idea's score.
-
-```
-reframe market --check        # test that every source is reachable from your computer
-reframe market 1              # live signals + suggested input updates for idea #1
-reframe market 1 --apply      # apply them (the scan and the new score are recorded)
-reframe market --all --apply  # every idea
-reframe watch --every 6       # re-scan all ideas every 6 hours (add --apply to auto-update)
-reframe watch --once --apply  # one pass, for cron / Windows Task Scheduler
-reframe history 1             # how the idea's score moved over time
-reframe live off|on           # turn live data off/on (on by default)
-```
-
-With live data on, brainstormed ideas are calibrated automatically. Each idea has a
-**market keywords** field (Inputs tab, or `reframe edit 1 --set keywords="dog grooming"`)
-that sets what's searched. By default it's taken from the title. In the web app, use the
-**Market** tab and the *Live market data* switch in the top bar.
-
-Privacy: your keywords (not your numbers) are sent to Wikipedia, Hacker News (Algolia),
-Apple and GitHub. Turn this off with `reframe live off`. GitHub allows about 10 searches a
-minute without an account, so big `--all` scans may show a temporary rate-limit message.
-
-These are *proxies* for supply and demand, not sales data. They make your numbers more
-grounded and comparable, but customer interviews and real sales still beat any signal.
-
-### 5. Three modes: offline (default), local AI, or Claude
-
-ReFrame's own AI (scoring, explanations, what-if experiments, learning from outcomes) and
-the planner **always run on your PC**. The mode only decides who *writes* brainstormed
-ideas and reviews:
+ReFrame's scoring AI and planner **always run on your PC**. The mode only decides who writes
+brainstormed ideas and reviews.
 
 | | **Offline** (default) | **Local AI** | **Claude** |
 |---|---|---|---|
-| Runs where | your PC, no AI model | a language model on **your PC** (Ollama or LM Studio) | Anthropic's cloud |
-| Needs | nothing | a free local AI app + a model download (~2–5 GB) | API key with credit |
+| Needs | nothing | free [Ollama](https://ollama.com) or [LM Studio](https://lmstudio.ai) + a model | Anthropic API key with credit |
 | Cost | free | free | paid per use |
-| Your ideas leave your PC? | no | no | yes (sent to Anthropic) |
-| Brainstorm | business-model templates matched to your topic | the local model invents ideas and estimates numbers | Claude invents ideas |
-| Review | rule-based checks + sensitivity analysis | local model's critique + the same sensitivity analysis | Claude's critique |
+| Your ideas leave your PC | no | no | yes |
+| Switch with | `reframe mode offline` | `reframe mode local` | `reframe mode claude` |
 
-```
-reframe mode            # show the current mode
-reframe mode offline    # built-in templates, no AI model (default)
-reframe mode local      # language model on this PC
-reframe mode claude     # Claude API
-reframe --offline ...   # force offline for one command, whatever the saved mode
-```
+You can also switch modes from the menu in the app's top bar.
 
-Setting the environment variable `REFRAME_OFFLINE=1` locks ReFrame to offline mode. In the
-web app, use the mode menu in the top bar.
+## Command line
 
-**Setting up Local AI (one time):**
+Everything in the app also works from the terminal:
 
-1. Install **Ollama** from https://ollama.com (Windows, Mac, Linux). It runs in the background.
-2. Download a model in a terminal: `ollama pull llama3.2` (about 2 GB, runs on most PCs).
-   With 16 GB+ RAM or a graphics card, `ollama pull qwen2.5:7b` gives better ideas.
-3. `reframe mode local`, then `reframe local` to check it's found.
-
-Prefer **LM Studio** (https://lmstudio.ai)? Download a model, start its local server
-(Developer tab → Start Server) and ReFrame finds it automatically at `localhost:1234`. Other
-OpenAI-compatible local servers (llama.cpp `llama-server`, Jan, LocalAI) work too:
-
-```
-reframe local                                    # status, installed models
-reframe local --model qwen2.5:7b                 # choose a model (default: auto-pick)
-reframe local --provider openai --url http://localhost:8080/v1   # any compatible server
+```console
+$ reframe rank
+1. Invoice chaser for freelancers (#1) - 97%, 3y profit $233,482, Strong: build it
+2. Refurbished lab equipment marketplace (#3) - 91%, 3y profit $191,600, Strong: build it
+3. Generic fitness tracking app (#2) - 11%, 3y profit -$81,603, Unlikely to work as-is: pivot or drop
+4. Ergonomic laptop stand for kitchen counters (#4) - 3%, 3y profit -$36,223, Unlikely to work as-is: pivot or drop
 ```
 
-Local models are smaller than cloud models, so ReFrame checks every answer, repairs
-common slips (extra text around the JSON, "15" meaning 15%, unknown categories), keeps
-every number in a sensible range, and retries once if the reply is unusable. On a PC
-without a graphics card, a brainstorm can take a minute or two.
-
-```
-reframe brainstorm "tools for small restaurants" --count 5 --save
-reframe review 1   # hidden risks, opportunities, questions to validate, inputs to double-check
+```bash
+reframe analyze 1                    # full analysis
+reframe plan 1 --out plan.md         # the plan as a Markdown checklist
+reframe brainstorm "dog groomers"    # ideas for a topic
+reframe market 1 --apply             # calibrate with live market data
+reframe outcome 1 success            # teach the AI
 ```
 
-Offline brainstorm numbers are starting guesses for each business model, not research.
-In every mode, replace guesses with real data (Inputs tab, `reframe edit`, or live market
-data) and the scores and plans follow.
-
-**Using Claude mode.** Install the `ai` extra, save an Anthropic API key (create one at
-https://console.anthropic.com/settings/keys) and switch modes:
-
-```
-pip install -e ".[ai]"
-reframe set-key     # paste your key once; it's saved in ~/.reframe on this computer only
-reframe mode claude
-```
-
-The Claude API is paid per use and billed separately from a Claude.ai subscription. If you
-see "credit balance is too low", add credit at https://console.anthropic.com/settings/billing
-or go back to `reframe mode offline`. An `ANTHROPIC_API_KEY` environment variable, if set,
-takes priority over the saved key. Remove the saved key with `reframe set-key --remove`.
-Claude requests use the server-side refusal fallback (`fallbacks: "default"`).
-
-## Install
-
-Requires Python 3.9+. The core has no dependencies. Offline and local AI modes need nothing
-else from pip (local AI needs the free Ollama or LM Studio app).
-
-```
-pip install -e .          # or: pip install -e ".[ai,dev]"
-reframe --help
-```
-
-Data is stored in `~/.reframe` (SQLite plus the trained model). Set `REFRAME_HOME` or
-`--home` to use another folder.
-
-## Starting the web app
-
-- **Windows:** double-click **`Start ReFrame.bat`** in the ReFrame folder.
-- **Mac/Linux:** run `./start-reframe.sh`, or `reframe serve` in a terminal.
-
-Your browser opens ReFrame at http://127.0.0.1:8765. **Keep the terminal window open** while
-you use it: closing it stops ReFrame. Don't open `reframe/static/index.html` directly; it
-can only work through the server. (Use `reframe serve --no-browser` to skip opening the browser.)
+See the **[command reference](docs/cli-reference.md)** for all commands.
 
 ## Troubleshooting
 
 | Message | Cause and fix |
 |---|---|
-| "Failed to fetch" / "Can't reach ReFrame's server" | The server isn't running, or the page was opened as a file. Start it as shown above and reload the page. |
-| "Port 8765 is already in use" | ReFrame is already running: just open http://127.0.0.1:8765. Or use `reframe serve --port 8766`. |
-| "ReFrame hit an unexpected error" | The details are saved in `.reframe/error.log` in your home folder. Send that file to get it fixed. |
+| "Failed to fetch" / "Can't reach ReFrame's server" | The server isn't running, or `index.html` was opened directly. Run `reframe serve` (or double-click `Start ReFrame.bat`) and reload. |
+| `'reframe' is not recognized` | Activate your virtual environment, or use `python -m reframe` instead. |
+| "Port 8765 is already in use" | ReFrame is already running: open http://127.0.0.1:8765, or use `reframe serve --port 8766`. |
+| "ReFrame hit an unexpected error" | The details are in `.reframe/error.log` in your home folder. [Open an issue](https://github.com/lucs-max/ReFrame/issues) and attach it. |
 | Live market sources "unavailable" | No internet, or blocked by a firewall/VPN. Everything else still works. Check with `reframe market --check`. |
-
-## Adding your own ideas
-
-Interactive: `reframe new "My idea"`, which asks for each market input with a sensible default.
-
-From a file: `reframe new --file ideas.json`. See `reframe/examples.json` for the format.
-
-Change an input and re-analyze: `reframe edit 1 --set competitors=3 --set unit_cost=2.5`
-
-| Input | Meaning |
-|---|---|
-| `potential_customers` | people/businesses with the problem in your target market |
-| `demand_growth` | yearly market growth (0.1 = 10%) |
-| `willingness_to_pay` | median price per purchase buyers accept |
-| `price_elasticity` | 0.5 = not price-sensitive … 3 = very price-sensitive |
-| `purchases_per_year` | 12 for a monthly subscription, 1 for a one-off |
-| `yearly_churn` | share of paying customers lost per year |
-| `competitors` | direct alternatives buyers use today |
-| `differentiation` | 0–1, how clearly better/different you are |
-| `unit_cost` | variable cost per purchase |
-| `customer_acquisition_cost` | cost to win one customer |
-| `fixed_costs_per_year`, `upfront_investment`, `budget` | money in $ |
-| `build_complexity`, `skill_fit` | 0–1 |
+| "No local AI found" | Install Ollama and run `ollama pull llama3.2`. See [Tutorial 8](docs/tutorials/08-local-ai.md). |
 
 ## Honest limits
 
 ReFrame's numbers are only as good as its inputs. The model is a transparent
-simplification, not a guarantee of profit. Use it to compare ideas, find the weak
-spots, and decide what to validate next. Then replace the guesses with real data from
-interviews, smoke tests and early sales. The more outcomes you record, the more the AI
-reflects what actually works for you.
+simplification, not a guarantee of profit. Live signals are indicators of supply and
+demand, not sales data. Use ReFrame to **compare ideas, find the weak spots, and decide what
+to validate next**, then replace guesses with real data from interviews, landing-page tests
+and early sales. The more outcomes you record, the more the AI reflects what actually
+works for you.
 
 ## Development
 
-```
+```bash
 pip install -e ".[dev]"
-pytest
+pytest                               # the full test suite (no network needed)
+python tools/gen_cli_reference.py    # regenerate docs/cli-reference.md
 ```
+
+The code is plain Python with no dependencies; see the [code map](docs/how-it-works.md#9-code-map).
+Tests run automatically on Windows, macOS and Linux for every push.

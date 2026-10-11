@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 import time
 from pathlib import Path
@@ -422,8 +423,8 @@ def build_parser() -> argparse.ArgumentParser:
     sub = p.add_subparsers(dest="command", required=True)
 
     s = sub.add_parser("new", help="add an idea (interactive, or --file idea.json)")
-    s.add_argument("title", nargs="?")
-    s.add_argument("--file")
+    s.add_argument("title", nargs="?", help="idea title (you're asked for the rest)")
+    s.add_argument("--file", help="JSON file with one idea or a list of ideas (see reframe/examples.json)")
     s.set_defaults(func=cmd_new)
 
     sub.add_parser("list", help="list ideas with scores").set_defaults(func=cmd_list)
@@ -432,34 +433,35 @@ def build_parser() -> argparse.ArgumentParser:
     sub.add_parser("demo", help="load example ideas").set_defaults(func=cmd_demo)
 
     s = sub.add_parser("analyze", help="full market + AI analysis of an idea")
-    s.add_argument("id", type=int)
-    s.add_argument("--json", action="store_true")
+    s.add_argument("id", type=int, help="idea number (see `reframe list`)")
+    s.add_argument("--json", action="store_true", help="output JSON")
     s.set_defaults(func=cmd_analyze)
 
     s = sub.add_parser("plan", help="step-by-step build plan")
-    s.add_argument("id", type=int)
-    s.add_argument("--out")
-    s.add_argument("--json", action="store_true")
+    s.add_argument("id", type=int, help="idea number (see `reframe list`)")
+    s.add_argument("--out", help="write the plan to a file (Markdown checklist) instead of the screen")
+    s.add_argument("--json", action="store_true", help="output JSON")
     s.set_defaults(func=cmd_plan)
 
     s = sub.add_parser("edit", help="change fields, e.g. --set competitors=3 --set unit_cost=2.5")
-    s.add_argument("id", type=int)
-    s.add_argument("--set", action="append", default=[], metavar="FIELD=VALUE")
+    s.add_argument("id", type=int, help="idea number (see `reframe list`)")
+    s.add_argument("--set", action="append", default=[], metavar="FIELD=VALUE",
+                   help="field to change; repeat for several (market inputs, title, description, category, keywords, recurring_revenue)")
     s.set_defaults(func=cmd_edit)
 
     s = sub.add_parser("delete", help="delete an idea")
-    s.add_argument("id", type=int)
+    s.add_argument("id", type=int, help="idea number (see `reframe list`)")
     s.set_defaults(func=cmd_delete)
 
     s = sub.add_parser("outcome", help="record what really happened; retrains the AI")
-    s.add_argument("id", type=int)
-    s.add_argument("result", choices=["success", "failure"])
-    s.add_argument("--profit", type=float)
-    s.add_argument("--notes")
+    s.add_argument("id", type=int, help="idea number (see `reframe list`)")
+    s.add_argument("result", choices=["success", "failure"], help="what happened")
+    s.add_argument("--profit", type=float, help="actual profit, if known")
+    s.add_argument("--notes", help="what you learned")
     s.set_defaults(func=cmd_outcome)
 
     s = sub.add_parser("mode", help="show or set the mode: offline (default), local (AI on this PC) or claude")
-    s.add_argument("mode", nargs="?", choices=["offline", "local", "claude"])
+    s.add_argument("mode", nargs="?", choices=["offline", "local", "claude"], help="mode to switch to (omit to show the current one)")
     s.set_defaults(func=cmd_mode)
 
     s = sub.add_parser("local", help="set up / check the local AI (Ollama or LM Studio)")
@@ -469,17 +471,17 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("--model", help="model name, e.g. llama3.2 or qwen2.5:7b (blank = auto)")
     s.set_defaults(func=cmd_local)
 
-    s = sub.add_parser("brainstorm", help="generate ideas for a topic (offline or with Claude)")
-    s.add_argument("topic")
-    s.add_argument("--count", type=int, default=5)
-    s.add_argument("--constraints")
-    s.add_argument("--save", action="store_true")
+    s = sub.add_parser("brainstorm", help="generate ideas for a topic (templates, local AI or Claude, by mode)")
+    s.add_argument("topic", help='what the ideas should be about, e.g. "dog groomers"')
+    s.add_argument("--count", type=int, default=5, help="how many ideas")
+    s.add_argument("--constraints", help="your limits, e.g. \"no coding, under $1,000\" (local AI / Claude)")
+    s.add_argument("--save", action="store_true", help="save the ideas (otherwise they're only shown)")
     s.add_argument("--offline", action="store_true",
                    help="use built-in business-model templates (no API key or credit needed)")
     s.set_defaults(func=cmd_brainstorm)
 
-    s = sub.add_parser("review", help="expert review of an idea (offline or with Claude)")
-    s.add_argument("id", type=int)
+    s = sub.add_parser("review", help="critical review of an idea (rule-based, local AI or Claude, by mode)")
+    s.add_argument("id", type=int, help="idea number (see `reframe list`)")
     s.set_defaults(func=cmd_review)
 
     s = sub.add_parser("set-key", help="save your Anthropic API key (only needed for claude mode)")
@@ -487,7 +489,7 @@ def build_parser() -> argparse.ArgumentParser:
     s.set_defaults(func=cmd_set_key)
 
     s = sub.add_parser("market", help="scan live market data for an idea and suggest input updates")
-    s.add_argument("id", type=int, nargs="?")
+    s.add_argument("id", type=int, nargs="?", help="idea number (see `reframe list`)")
     s.add_argument("--all", action="store_true", help="scan every idea")
     s.add_argument("--apply", action="store_true", help="apply the suggested updates")
     s.add_argument("--refresh", action="store_true", help="ignore the 12-hour cache")
@@ -495,22 +497,22 @@ def build_parser() -> argparse.ArgumentParser:
     s.set_defaults(func=cmd_market)
 
     s = sub.add_parser("watch", help="re-scan the live market for all ideas on a schedule")
-    s.add_argument("--every", type=float, default=6, metavar="HOURS")
+    s.add_argument("--every", type=float, default=6, metavar="HOURS", help="hours between scans")
     s.add_argument("--apply", action="store_true", help="apply suggestions automatically")
     s.add_argument("--once", action="store_true", help="scan once and exit (for cron/Task Scheduler)")
     s.set_defaults(func=cmd_watch)
 
     s = sub.add_parser("history", help="score history of an idea over time")
-    s.add_argument("id", type=int)
+    s.add_argument("id", type=int, help="idea number (see `reframe list`)")
     s.set_defaults(func=cmd_history)
 
     s = sub.add_parser("live", help="turn live market data on or off")
-    s.add_argument("state", nargs="?", choices=["on", "off"])
+    s.add_argument("state", nargs="?", choices=["on", "off"], help="omit to show the current setting")
     s.set_defaults(func=cmd_live)
 
     s = sub.add_parser("serve", help="start the web app")
-    s.add_argument("--host", default="127.0.0.1")
-    s.add_argument("--port", type=int, default=8765)
+    s.add_argument("--host", default="127.0.0.1", help="address to listen on (keep 127.0.0.1 to stay private)")
+    s.add_argument("--port", type=int, default=8765, help="port to listen on")
     s.add_argument("--no-browser", action="store_true", help="don't open the browser automatically")
     s.set_defaults(func=cmd_serve)
     return p
@@ -533,6 +535,11 @@ def main(argv: list[str] | None = None) -> None:
         args.func(engine, args)
     except (KeyError, ValueError) as e:
         sys.exit(f"Error: {e}")
+    except BrokenPipeError:  # output piped into e.g. `more`/`head` that stopped reading
+        try:
+            sys.stdout = open(os.devnull, "w")
+        except OSError:
+            pass
 
 
 if __name__ == "__main__":

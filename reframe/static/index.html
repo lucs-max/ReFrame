@@ -4,6 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>ReFrame Idea Lab</title>
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA1MTIgNTEyIiByb2xlPSJpbWciIGFyaWEtbGFiZWw9IlJlRnJhbWUgbG9nbyI+CiAgPGRlZnM+CiAgICA8bGluZWFyR3JhZGllbnQgaWQ9ImJnIiB4MT0iMCIgeTE9IjAiIHgyPSIxIiB5Mj0iMSI+CiAgICAgIDxzdG9wIG9mZnNldD0iMCIgc3RvcC1jb2xvcj0iIzRjNmVmNSIvPgogICAgICA8c3RvcCBvZmZzZXQ9IjEiIHN0b3AtY29sb3I9IiM3MDQ4ZTgiLz4KICAgIDwvbGluZWFyR3JhZGllbnQ+CiAgPC9kZWZzPgogIDxyZWN0IHg9IjE2IiB5PSIxNiIgd2lkdGg9IjQ4MCIgaGVpZ2h0PSI0ODAiIHJ4PSIxMTIiIGZpbGw9InVybCgjYmcpIi8+CiAgPGcgZmlsbD0ibm9uZSIgc3Ryb2tlPSIjZmZmIiBzdHJva2Utd2lkdGg9IjMwIiBzdHJva2UtbGluZWNhcD0icm91bmQiIHN0cm9rZS1saW5lam9pbj0icm91bmQiPgogICAgPHBhdGggZD0iTTExOCAyMDZWMTU4cTAtNDAgNDAtNDBoNDgiLz4KICAgIDxwYXRoIGQ9Ik0zMDYgMTE4aDQ4cTQwIDAgNDAgNDB2NDgiLz4KICAgIDxwYXRoIGQ9Ik0xMTggMzA2djQ4cTAgNDAgNDAgNDBoNDgiLz4KICAgIDxwYXRoIGQ9Ik0zOTQgMzA2djQ4cTAgNDAtNDAgNDBoLTQ4Ii8+CiAgICA8cGF0aCBkPSJNMTY4IDMyNmw2Mi02MiA0NCAzNCA2Ni04NiIvPgogIDwvZz4KICA8Y2lyY2xlIGN4PSIzNDYiIGN5PSIyMDYiIHI9IjMwIiBmaWxsPSIjZmZkNDNiIi8+CiAgPGNpcmNsZSBjeD0iMzQ2IiBjeT0iMjA2IiByPSIzMCIgZmlsbD0ibm9uZSIgc3Ryb2tlPSIjZmZmIiBzdHJva2Utd2lkdGg9IjEwIi8+Cjwvc3ZnPgo=">
 <style>
 :root {
   --bg: #f6f7f9; --panel: #ffffff; --text: #1b1f24; --muted: #5d6570; --line: #e2e5ea;
@@ -21,6 +22,7 @@ body { margin: 0; background: var(--bg); color: var(--text);
 header { display: flex; align-items: center; gap: 12px; padding: 14px 20px;
          border-bottom: 1px solid var(--line); background: var(--panel); }
 header h1 { font-size: 18px; margin: 0; }
+header .logo { flex: none; }
 header .sub { color: var(--muted); font-size: 13px; }
 header .spacer { flex: 1; }
 button { font: inherit; border: 1px solid var(--line); background: var(--panel); color: var(--text);
@@ -53,6 +55,7 @@ main { padding: 20px; max-width: 1000px; width: 100%; }
 table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
 th, td { text-align: right; padding: 6px 8px; border-bottom: 1px solid var(--line); }
 th:first-child, td:first-child { text-align: left; }
+td:first-child { white-space: nowrap; }
 th { font-size: 12px; color: var(--muted); font-weight: 500; }
 .pos { color: var(--good); } .neg { color: var(--bad); }
 ul.clean { list-style: none; padding: 0; margin: 0; }
@@ -95,7 +98,7 @@ textarea { min-height: 60px; }
 </head>
 <body>
 <header>
-  <h1>ReFrame</h1><span class="sub">Idea lab: analyze, rank, plan, learn</span>
+  <svg class="logo" viewBox="0 0 512 512" width="28" height="28" aria-hidden="true"><defs><linearGradient id="lg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#4c6ef5"/><stop offset="1" stop-color="#7048e8"/></linearGradient></defs><rect x="16" y="16" width="480" height="480" rx="112" fill="url(#lg)"/><g fill="none" stroke="#fff" stroke-width="30" stroke-linecap="round" stroke-linejoin="round"><path d="M118 206V158q0-40 40-40h48"/><path d="M306 118h48q40 0 40 40v48"/><path d="M118 306v48q0 40 40 40h48"/><path d="M394 306v48q0 40-40 40h-48"/><path d="M168 326l62-62 44 34 66-86"/></g><circle cx="346" cy="206" r="30" fill="#ffd43b"/><circle cx="346" cy="206" r="30" fill="none" stroke="#fff" stroke-width="10"/></svg><h1>ReFrame</h1><span class="sub">Idea lab: analyze, rank, plan, learn</span>
   <span class="spacer"></span>
   <label title="Fetch live market signals (Wikipedia, Hacker News, App Store, GitHub). Needs internet, no API keys."
          style="display:flex;gap:6px;align-items:center;font-size:13px;white-space:nowrap">
