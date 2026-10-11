@@ -74,7 +74,54 @@ Plans adapt to the idea's category (`saas`, `mobile_app`, `ecommerce`, `marketpl
 Each step has *why*, a checklist, and a *done when* condition. `reframe plan 1 --out plan.md`
 writes it as a Markdown checklist. In the web app you can tick steps off.
 
-### 4. Two modes: offline (default) or Claude
+### 4. Live market data (`reframe/live.py`)
+ReFrame checks your inputs against the live market using free public sources. It needs
+internet but **no API keys and no Anthropic account**, so it works in offline mode too.
+
+| Source | What it measures | Inputs it calibrates |
+|---|---|---|
+| Wikipedia page views (last 24 complete months) | interest in the topic and its year-over-year growth | market growth |
+| Hacker News stories (this year vs last year) | discussion trend, strongest for tech topics | market growth |
+| Apple App Store search | established competitors, their ratings and prices | competitors, willingness to pay (apps), differentiation room |
+| GitHub search | open-source alternatives | competitors (software ideas) |
+
+**The calibration algorithm.** Every signal proposes a value for an input, with a confidence
+based on how much data backs it (more page views, more stories, more apps → higher
+confidence). The suggestion is `current + confidence × (signal − current)`: thin evidence
+nudges your number, strong evidence moves it most of the way. Your own knowledge isn't
+thrown away, and one noisy reading can't swing the result.
+
+**Consistency.** Fixed time windows (complete months, whole days), medians instead of
+averages, and a 12-hour cache mean repeat scans give the same answer. A capped App Store
+search (50 results) is treated as a minimum and never lowers your competitor count.
+
+**Market pulse.** A 0–100% summary of the live data (growth up, saturation down, weak
+competitor ratings = room to win), shown next to the idea's score.
+
+```
+reframe market --check        # test that every source is reachable from your computer
+reframe market 1              # live signals + suggested input updates for idea #1
+reframe market 1 --apply      # apply them (the scan and the new score are recorded)
+reframe market --all --apply  # every idea
+reframe watch --every 6       # re-scan all ideas every 6 hours (add --apply to auto-update)
+reframe watch --once --apply  # one pass, for cron / Windows Task Scheduler
+reframe history 1             # how the idea's score moved over time
+reframe live off|on           # turn live data off/on (on by default)
+```
+
+With live data on, brainstormed ideas are calibrated automatically. Each idea has a
+**market keywords** field (Inputs tab, or `reframe edit 1 --set keywords="dog grooming"`)
+that sets what's searched. By default it's taken from the title. In the web app, use the
+**Market** tab and the *Live market data* switch in the top bar.
+
+Privacy: your keywords (not your numbers) are sent to Wikipedia, Hacker News (Algolia),
+Apple and GitHub. Turn this off with `reframe live off`. GitHub allows about 10 searches a
+minute without an account, so big `--all` scans may show a temporary rate-limit message.
+
+These are *proxies* for supply and demand, not sales data. They make your numbers more
+grounded and comparable, but customer interviews and real sales still beat any signal.
+
+### 5. Two modes: offline (default) or Claude
 
 | | **Offline mode** (default) | **Claude mode** |
 |---|---|---|

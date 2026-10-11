@@ -213,6 +213,7 @@ from reframe.engine import Engine
 from reframe.storage import Store
 e = Engine(Store(Path({str(tmp_path)!r})))
 e.store.save_api_key("sk-ant-should-not-be-used")
+e.set_live(False)
 assert e.mode == "offline"
 ideas = e.brainstorm("small restaurants", 3)
 idea = e.store.add_idea(ideas[0])
@@ -269,6 +270,7 @@ def test_web_mode_and_review(tmp_path):
         with urllib.request.urlopen(req) as r:
             return json.loads(r.read())
 
+    engine.set_live(False)
     try:
         assert call("/api/settings")["mode"] == "offline"
         ideas = call("/api/brainstorm", {"topic": "pet owners", "count": 2})
@@ -278,3 +280,125 @@ def test_web_mode_and_review(tmp_path):
         assert call("/api/settings", {"mode": "claude"})["mode"] == "claude"
     finally:
         server.shutdown()
+
+
+# -- live market data -------------------------------------------------------------
+
+def _fake_fetcher(tmp_path, calls=None, fail=()):
+    from reframe.live import Fetcher, SourceError
+
+    class Fake(Fetcher):
+        def get_json(self, url, headers=None):
+            if calls is not None:
+                calls.append(url)
+            host = url.split("/")[2]
+            if host in fail:
+                raise SourceError(f"can't reach {host}")
+            if "opensearch" in url:
+                return ["invoice", ["Invoice"], [""], ["https://en.wikipedia.org/wiki/Invoice"]]
+            if host == "wikimedia.org":  # 24 months: 1000/month last year, 2000/month this year
+                return {"items": [{"views": 1000} for _ in range(12)] + [{"views": 2000} for _ in range(12)]}
+            if host == "hn.algolia.com":
+                return {"nbHits": 150 if "created_at_i%3E" in url and url.count("%3E") else 0,
+                        "hits": []}
+            if host == "itunes.apple.com":
+                apps = [{"trackName": f"App {i}", "price": 4.99 if i % 2 else 0.0,
+                         "userRatingCount": 500 if i < 12 else 3, "averageUserRating": 3.6}
+                        for i in range(30)]
+                return {"resultCount": len(apps), "results": apps}
+            if host == "api.github.com":
+                return {"total_count": 1000, "items": []}
+            raise AssertionError(url)
+
+    return Fake(tmp_path / "cache.json")
+
+
+def test_live_scan_signals_and_calibration(tmp_path):
+    from reframe import live
+    idea = Idea("Invoice reminders", category="mobile_app", keywords="invoice",
+                market=MarketInputs(demand_growth=0.05, competitors=2, willingness_to_pay=20,
+                                    differentiation=0.5))
+    scan = live.scan(idea, _fake_fetcher(tmp_path))
+    assert not scan.errors, scan.errors
+    assert scan.signals["wikipedia"]["growth"] == pytest.approx(1.0)  # 1000 -> 2000 views
+    assert scan.signals["appstore"]["established_apps"] == 12
+    by_field = {s.field: s for s in scan.suggestions}
+    # Growth moves toward the (capped) live signal, but only part of the way.
+    g = by_field["demand_growth"]
+    assert 0.05 < g.suggested < g.signal <= 0.6
+    # 12 established apps vs 2 entered competitors: suggested count rises, not all the way.
+    c = by_field["competitors"]
+    assert 2 < c.suggested < 12
+    assert by_field["willingness_to_pay"].signal == pytest.approx(4.99)
+    assert by_field["differentiation"].suggested > 0.5  # competitors rated 3.6/5
+    assert scan.pulse is not None and scan.pulse_label
+    live.apply(idea, scan)
+    assert idea.market.competitors == c.suggested and isinstance(idea.market.competitors, int)
+
+
+def test_live_scan_is_cached_and_consistent(tmp_path):
+    from reframe import live
+    calls = []
+    idea = Idea("Invoice reminders", category="saas", keywords="invoice")
+    now = 1_760_000_000
+    first = live.scan(idea, _fake_fetcher(tmp_path, calls), now=now)
+    n = len(calls)
+    second = live.scan(idea, _fake_fetcher(tmp_path, calls), now=now + 3600)  # new process, same cache file
+    assert len(calls) == n, "second scan within 12h should come from the cache"
+    assert [s.suggested for s in first.suggestions] == [s.suggested for s in second.suggestions]
+
+
+def test_live_scan_tolerates_unreachable_sources(tmp_path):
+    from reframe import live
+    idea = Idea("Invoice reminders", category="saas", keywords="invoice")
+    scan = live.scan(idea, _fake_fetcher(tmp_path, fail={"itunes.apple.com", "api.github.com"}))
+    assert set(scan.errors) == {"appstore", "github"}
+    assert "wikipedia" in scan.signals
+    assert all(s.field == "demand_growth" for s in scan.suggestions)
+
+
+def test_keywords_from_title():
+    from reframe.live import keywords_for
+    assert keywords_for(Idea("Scheduling & admin software for small restaurants")) == "scheduling admin restaurants"
+    assert keywords_for(Idea("x", keywords="dog grooming")) == "dog grooming"
+
+
+def test_engine_scan_records_history(tmp_path, monkeypatch):
+    engine = Engine(Store(tmp_path))
+    monkeypatch.setattr(engine, "fetcher", lambda: _fake_fetcher(tmp_path))
+    idea = engine.store.add_idea(Idea("Invoice reminders", category="saas", keywords="invoice"))
+    engine.scan_market(idea)
+    engine.scan_market(idea, apply=True)
+    hist = engine.store.score_history(idea.id)
+    assert [h["note"] for h in hist] == ["live scan", "live data applied"]
+    assert engine.store.latest_scan(idea.id)["applied"] is True
+    assert engine.store.get_idea(idea.id).market.demand_growth != MarketInputs().demand_growth
+
+
+def test_brainstorm_uses_live_data_unless_off(tmp_path, monkeypatch):
+    engine = Engine(Store(tmp_path))
+    monkeypatch.setattr(engine, "fetcher", lambda: _fake_fetcher(tmp_path))
+    live_ideas = engine.brainstorm("invoice", 3)
+    engine.set_live(False)
+    plain = engine.brainstorm("invoice", 3)
+    assert {i.market.demand_growth for i in live_ideas} != {i.market.demand_growth for i in plain}
+
+
+def test_capped_app_search_never_lowers_competitors():
+    from reframe.live import calibrate
+    idea = Idea("Fitness app", category="mobile_app", market=MarketInputs(competitors=400))
+    signals = {"appstore": {"apps_found": 50, "capped": True, "established_apps": 30, "paid_apps": 0,
+                            "median_paid_price": None, "median_rating": 4.5, "total_ratings": 0,
+                            "top_apps": [], "url": ""}}
+    assert "competitors" not in {s.field for s in calibrate(idea, signals)}
+    idea.market.competitors = 5
+    assert {s.field: s for s in calibrate(idea, signals)}["competitors"].suggested > 5
+
+
+def test_unreachable_host_is_tried_once_per_run(tmp_path):
+    calls = []
+    fetch = _fake_fetcher(tmp_path, calls, fail={"itunes.apple.com"})
+    from reframe import live
+    for title in ("A invoice app", "B invoice app", "C invoice app"):
+        live.scan(Idea(title, category="mobile_app", keywords=title), fetch)
+    assert sum("itunes.apple.com" in u for u in calls) == 1

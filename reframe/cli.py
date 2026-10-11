@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+import time
 from pathlib import Path
 
 from .analyzer import Analysis
@@ -156,7 +157,7 @@ def cmd_edit(engine: Engine, args: argparse.Namespace) -> None:
             data["market"][key] = value
         elif key == "recurring_revenue":
             data[key] = value.lower() in ("1", "true", "yes", "y")
-        elif key in ("title", "description", "category"):
+        elif key in ("title", "description", "category", "keywords"):
             data[key] = value
         else:
             sys.exit(f"Unknown field: {key}")
@@ -271,6 +272,105 @@ def cmd_set_key(engine: Engine, args: argparse.Namespace) -> None:
         print("You're in offline mode. Turn on Claude with: reframe mode claude")
 
 
+def print_scan(scan) -> None:
+    print(f"\n-- Live market scan for \"{scan.query}\" ({scan.fetched_at}) --")
+    if scan.pulse is not None:
+        print(f"Market pulse   {bar(scan.pulse, 10)} {scan.pulse:.0%} ({scan.pulse_label})")
+    sig = scan.signals
+    if "wikipedia" in sig:
+        w = sig["wikipedia"]
+        print(f"  Wikipedia    '{w['article']}': {w['monthly_views']:,.0f} views/month, "
+              f"{w['growth']:+.0%} vs last year")
+    if "hackernews" in sig:
+        h = sig["hackernews"]
+        print(f"  Hacker News  {h['stories_this_year']} stories this year vs {h['stories_last_year']} "
+              f"last year ({h['growth']:+.0%})")
+    if "appstore" in sig:
+        a = sig["appstore"]
+        price = f", median paid price ${a['median_paid_price']:.2f}" if a["median_paid_price"] else ""
+        rating = f", rated {a['median_rating']:.1f}/5" if a["median_rating"] is not None else ""
+        print(f"  App Store    {a['apps_found']}{'+' if a['capped'] else ''} apps, "
+              f"{a['established_apps']} established{rating}{price}")
+    if "github" in sig:
+        print(f"  GitHub       {sig['github']['repositories']:,} repositories")
+    for name, err in scan.errors.items():
+        print(f"  {name:<12} unavailable: {err}")
+    if scan.suggestions:
+        print("\nSuggested input updates (current -> suggested, confidence):")
+        for x in scan.suggestions:
+            print(f"  {x.field:<20} {x.current:>10,.3g} -> {x.suggested:<10,.3g} {x.confidence:.0%}  {x.reason}")
+    else:
+        print("\nNo input changes suggested.")
+
+
+def cmd_market(engine: Engine, args: argparse.Namespace) -> None:
+    if args.check:
+        from .live import check
+        print("Checking live market sources (needs internet, no API keys)...")
+        for name, status in check(engine.fetcher()).items():
+            print(f"  {name:<12} {status}")
+        return
+    ids = [i.id for i in engine.store.list_ideas()] if args.all else [args.id]
+    if ids == [None]:
+        sys.exit("Give an idea id, or use --all.")
+    for idea_id in ids:
+        idea = engine.store.get_idea(idea_id)
+        before = engine.analyze(idea)
+        scan = engine.scan_market(idea, apply=args.apply, refresh=args.refresh)
+        print(f"\n=== {idea.title} (#{idea.id}) ===")
+        print_scan(scan)
+        if args.apply and scan.suggestions:
+            after = engine.analyze(idea)
+            print(f"\nApplied. Score {before.score:.0%} -> {after.score:.0%}, 3-year profit "
+                  f"{money(before.market.total_profit)} -> {money(after.market.total_profit)}")
+        elif scan.suggestions:
+            print(f"\nApply them with: reframe market {idea.id} --apply")
+
+
+def cmd_watch(engine: Engine, args: argparse.Namespace) -> None:
+    print(f"Watching the live market every {args.every:g} hour(s). Press Ctrl+C to stop.")
+    try:
+        while True:
+            for idea in engine.store.list_ideas():
+                before = engine.analyze(idea)
+                scan = engine.scan_market(idea, apply=args.apply, refresh=True)
+                after = engine.analyze(idea)
+                pulse = f"pulse {scan.pulse:.0%}" if scan.pulse is not None else "no live data"
+                change = f"{before.score:.0%} -> {after.score:.0%}" if args.apply else f"{after.score:.0%}"
+                print(f"[{scan.fetched_at}] #{idea.id} {idea.title}: score {change}, {pulse}, "
+                      f"{len(scan.suggestions)} suggestion(s)")
+            if args.once:
+                return
+            time.sleep(args.every * 3600)
+    except KeyboardInterrupt:
+        print("\nStopped.")
+
+
+def cmd_history(engine: Engine, args: argparse.Namespace) -> None:
+    idea = engine.store.get_idea(args.id)
+    rows = engine.store.score_history(idea.id)
+    if not rows:
+        print("No history yet. Run `reframe market <id>` or `reframe watch` to start tracking.")
+        return
+    print(f"Score history for {idea.title}:")
+    for r in rows:
+        pulse = f"pulse {r['pulse']:.0%}" if r["pulse"] is not None else ""
+        print(f"  {r['at']}  {bar(r['score'], 10)} {r['score']:>4.0%}  {money(r['total_profit']):>11}  "
+              f"{pulse:<11} {r['note'] or ''}")
+
+
+def cmd_live(engine: Engine, args: argparse.Namespace) -> None:
+    if args.state:
+        engine.set_live(args.state == "on")
+    if engine.live_enabled:
+        print("Live market data: on. Brainstormed ideas are calibrated with live signals from\n"
+              "Wikipedia, Hacker News, the App Store and GitHub (internet needed, no API keys).\n"
+              "Your search keywords are sent to those sites. Turn off with `reframe live off`.")
+    else:
+        print("Live market data: off. Nothing is fetched from the internet. "
+              "Turn on with `reframe live on`.")
+
+
 def cmd_demo(engine: Engine, args: argparse.Namespace) -> None:
     for item in json.loads(EXAMPLES.read_text(encoding="utf-8")):
         idea = engine.store.add_idea(Idea.from_dict(item))
@@ -348,6 +448,28 @@ def build_parser() -> argparse.ArgumentParser:
     s = sub.add_parser("set-key", help="save your Anthropic API key (only needed for claude mode)")
     s.add_argument("--remove", action="store_true", help="delete the saved key")
     s.set_defaults(func=cmd_set_key)
+
+    s = sub.add_parser("market", help="scan live market data for an idea and suggest input updates")
+    s.add_argument("id", type=int, nargs="?")
+    s.add_argument("--all", action="store_true", help="scan every idea")
+    s.add_argument("--apply", action="store_true", help="apply the suggested updates")
+    s.add_argument("--refresh", action="store_true", help="ignore the 12-hour cache")
+    s.add_argument("--check", action="store_true", help="test that every live source is reachable")
+    s.set_defaults(func=cmd_market)
+
+    s = sub.add_parser("watch", help="re-scan the live market for all ideas on a schedule")
+    s.add_argument("--every", type=float, default=6, metavar="HOURS")
+    s.add_argument("--apply", action="store_true", help="apply suggestions automatically")
+    s.add_argument("--once", action="store_true", help="scan once and exit (for cron/Task Scheduler)")
+    s.set_defaults(func=cmd_watch)
+
+    s = sub.add_parser("history", help="score history of an idea over time")
+    s.add_argument("id", type=int)
+    s.set_defaults(func=cmd_history)
+
+    s = sub.add_parser("live", help="turn live market data on or off")
+    s.add_argument("state", nargs="?", choices=["on", "off"])
+    s.set_defaults(func=cmd_live)
 
     s = sub.add_parser("serve", help="start the web app")
     s.add_argument("--host", default="127.0.0.1")

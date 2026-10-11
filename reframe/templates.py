@@ -138,6 +138,6 @@ def offline_brainstorm(topic: str, count: int = 5,
                 market[field] = type(market.get(field, getattr(MarketInputs(), field)))(
                     market.get(field, getattr(MarketInputs(), field)) * factor)
         ideas.append(Idea(title.format(t=topic), desc.format(t=topic), category, recurring,
-                          MarketInputs(**market)))
+                          MarketInputs(**market), keywords=topic))
     scored = sorted(ideas, key=lambda i: analyze(i, model).score, reverse=True)
     return scored[:max(1, count)]

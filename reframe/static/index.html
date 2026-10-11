@@ -38,6 +38,7 @@ main { padding: 20px; max-width: 1000px; width: 100%; }
 .card { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 16px;
         margin-bottom: 16px; }
 .card h3 { margin: 0 0 10px; font-size: 15px; }
+.card:has(> table) { overflow-x: auto; }
 .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px; }
 .stat .k { font-size: 12px; color: var(--muted); }
 .stat .v { font-size: 20px; font-weight: 600; font-variant-numeric: tabular-nums; }
@@ -96,6 +97,9 @@ textarea { min-height: 60px; }
 <header>
   <h1>ReFrame</h1><span class="sub">Idea lab: analyze, rank, plan, learn</span>
   <span class="spacer"></span>
+  <label title="Fetch live market signals (Wikipedia, Hacker News, App Store, GitHub). Needs internet, no API keys."
+         style="display:flex;gap:6px;align-items:center;font-size:13px;white-space:nowrap">
+    <input type="checkbox" id="liveChk" style="width:auto"> Live market data</label>
   <select id="modeSel" title="Offline mode never contacts Anthropic and needs no API key" style="width:auto">
     <option value="offline">Offline mode (no API key)</option>
     <option value="claude">Claude mode (API key)</option>
@@ -187,11 +191,11 @@ function render() {
         <div>${esc(a.verdict)}</div>
         <div class="muted">${esc(idea.category)} · ${a.model_trained_on ? `AI trained on ${a.model_trained_on} real outcomes` : "AI using built-in priors"}</div></div>
     </div>
-    <div class="tabs">${["analysis", "plan", "review", "inputs", "outcome"].map(t =>
+    <div class="tabs">${["analysis", "market", "plan", "review", "inputs", "outcome"].map(t =>
       `<button data-t="${t}" class="${t === tab ? "on" : ""}">${t[0].toUpperCase() + t.slice(1)}</button>`).join("")}</div>
     <div id="tab"></div>`;
   document.querySelectorAll(".tabs button").forEach(b => b.onclick = () => { tab = b.dataset.t; render(); });
-  ({ analysis: renderAnalysis, plan: renderPlan, review: renderReview, inputs: renderInputs, outcome: renderOutcome })[tab]();
+  ({ analysis: renderAnalysis, market: renderMarket, plan: renderPlan, review: renderReview, inputs: renderInputs, outcome: renderOutcome })[tab]();
 }
 
 function renderAnalysis() {
@@ -258,6 +262,8 @@ function renderPlan() {
 function ideaForm(idea, onSubmit, submitLabel) {
   $("#tab").innerHTML = `<form class="card" id="f">
     <div class="row"><label class="hint">Title</label><input name="title" required value="${esc(idea.title)}"></div>
+    <div class="row"><label class="hint">Market keywords<small>Search phrase for live data (blank = from title)</small></label>
+      <input name="keywords" value="${esc(idea.keywords || "")}" placeholder="e.g. dog grooming"></div>
     <div class="row"><label class="hint">Description</label><textarea name="description">${esc(idea.description)}</textarea></div>
     <div class="row"><label class="hint">Category</label><select name="category">${META.categories.map(c =>
       `<option ${c === idea.category ? "selected" : ""}>${c}</option>`).join("")}</select></div>
@@ -274,6 +280,7 @@ function ideaForm(idea, onSubmit, submitLabel) {
     const fd = new FormData(f), market = {};
     for (const k of Object.keys(FIELDS)) market[k] = Number(fd.get(k));
     return { title: fd.get("title") || "Untitled", description: fd.get("description"), category: fd.get("category"),
+             keywords: fd.get("keywords") || "",
              recurring_revenue: fd.get("recurring_revenue") === "1", market };
   };
   let timer;
@@ -293,6 +300,72 @@ function renderInputs() {
   $("#del").onclick = async () => { if (!confirm("Delete this idea?")) return;
     await api(`/api/ideas/${current.idea.id}`, { method: "DELETE" }); current = null;
     $("#main").innerHTML = `<div class="empty">Idea deleted.</div>`; loadList(); };
+}
+
+function sparkline(values) {
+  if (values.length < 2) return "";
+  const w = 280, h = 48, max = 1, min = 0;
+  const pts = values.map((v, i) => `${(i / (values.length - 1) * w).toFixed(1)},${(h - (v - min) / (max - min) * h).toFixed(1)}`);
+  return `<svg viewBox="0 0 ${w} ${h}" width="100%" height="${h}" preserveAspectRatio="none" role="img" aria-label="Score over time">
+    <polyline points="${pts.join(" ")}" fill="none" stroke="var(--accent)" stroke-width="2" vector-effect="non-scaling-stroke"/></svg>`;
+}
+
+async function renderMarket(scanning = false) {
+  const id = current.idea.id;
+  let data;
+  try { data = await api(`/api/ideas/${id}/market`); } catch (e) { return toast(e.message); }
+  if (current?.idea.id !== id || tab !== "market") return;
+  const sc = data.scan, sig = sc?.signals || {};
+  const row = (k, v) => `<tr><td>${k}</td><td>${v}</td></tr>`;
+  const rows = [];
+  if (sig.wikipedia) rows.push(row(`Wikipedia <a href="${esc(sig.wikipedia.url)}" target="_blank" rel="noopener">${esc(sig.wikipedia.article)}</a>`,
+    `${Math.round(sig.wikipedia.monthly_views).toLocaleString()} views/month · ${(sig.wikipedia.growth * 100).toFixed(0)}% vs last year`));
+  if (sig.hackernews) rows.push(row(`<a href="${esc(sig.hackernews.url)}" target="_blank" rel="noopener">Hacker News</a>`,
+    `${sig.hackernews.stories_this_year} stories this year vs ${sig.hackernews.stories_last_year} last year`));
+  if (sig.appstore) { const a = sig.appstore; rows.push(row(`<a href="${esc(a.url)}" target="_blank" rel="noopener">App Store</a>`,
+    `${a.apps_found}${a.capped ? "+" : ""} apps, ${a.established_apps} established` +
+    (a.median_rating != null ? `, rated ${a.median_rating.toFixed(1)}/5` : "") +
+    (a.median_paid_price ? `, median paid price $${a.median_paid_price.toFixed(2)}` : "") +
+    (a.top_apps?.length ? `<br><span class="muted">Top: ${a.top_apps.map(t => esc(t.name)).join(", ")}</span>` : ""))); }
+  if (sig.github) rows.push(row(`<a href="${esc(sig.github.url)}" target="_blank" rel="noopener">GitHub</a>`,
+    `${sig.github.repositories.toLocaleString()} repositories`));
+  for (const [k, v] of Object.entries(sc?.errors || {})) rows.push(row(esc(k), `<span class="muted">unavailable: ${esc(v)}</span>`));
+  const hist = data.history || [];
+  $("#tab").innerHTML = `
+    <div class="card">
+      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+        <button class="primary" id="scanBtn" ${scanning ? "disabled" : ""}>${scanning ? "Scanning..." : "Scan live market"}</button>
+        <button id="applyBtn" ${sc?.suggestions?.length && !sc.applied ? "" : "disabled"}>Apply suggestions</button>
+        <span class="muted">${sc ? `Last scan ${esc(sc.fetched_at.replace("T", " ").replace("+00:00", " UTC"))} for “${esc(sc.query)}”` : "Not scanned yet."}</span>
+      </div>
+      ${data.live ? "" : `<p class="muted">Live market data is off (top bar). Scanning here still works when you click.</p>`}
+    </div>
+    ${sc ? `<div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(260px,1fr))">
+      <div class="card score"><div class="ring" style="--p:${Math.round((sc.pulse ?? 0) * 100)};--c:${scoreColor(sc.pulse ?? 0)}"><span>${sc.pulse == null ? "–" : pct(sc.pulse)}</span></div>
+        <div><b>Market pulse</b><div>${esc(sc.pulse_label)}</div><div class="muted">Growth up, saturation down, room to beat competitors.</div></div></div>
+      <div class="card"><h3>Score over time</h3>${sparkline(hist.map(h => h.score)) || `<p class="muted">Scan again later (or run <code>reframe watch</code>) to build a history.</p>`}
+        ${hist.length ? `<div class="muted">${hist.length} data point(s), latest ${pct(hist[hist.length - 1].score)}</div>` : ""}</div>
+    </div>
+    <div class="card"><h3>Live signals</h3><table>${rows.join("") || row("—", "No data")}</table></div>
+    <div class="card"><h3>Suggested input updates ${sc.applied ? `<span class="pos" style="font-weight:400">(applied)</span>` : ""}</h3>
+      ${sc.suggestions.length ? `<table><tr><th>Input</th><th>Current</th><th>Live signal</th><th>Suggested</th><th>Confidence</th></tr>
+        ${sc.suggestions.map(x => `<tr><td>${esc(FIELDS[x.field]?.[0] || x.field)}<br><span class="muted">${esc(x.reason)}</span></td>
+          <td>${+x.current.toFixed(3)}</td><td>${+x.signal.toFixed(3)}</td><td><b>${+x.suggested.toFixed(3)}</b></td><td>${pct(x.confidence)}</td></tr>`).join("")}</table>
+        <p class="muted">Suggestions move your numbers part of the way toward the live signal, more when the evidence is strong, so results stay stable.</p>`
+      : `<p class="muted">Your inputs already match the live signals.</p>`}</div>` : ""}`;
+  $("#scanBtn").onclick = () => doScan(false);
+  $("#applyBtn").onclick = () => doScan(true);
+}
+
+async function doScan(apply) {
+  const id = current.idea.id;
+  if (!apply) renderMarket(true);
+  try { const r = await api(`/api/ideas/${id}/market`, { method: "POST", body: { apply } });
+    if (r.full) current = r.full;
+    toast(apply ? "Live data applied and re-analyzed" : "Live market scanned");
+    if (apply) loadList();
+    render(); }
+  catch (e) { toast(e.message); render(); }
 }
 
 async function renderReview() {
@@ -340,7 +413,7 @@ function renderOutcome() {
 $("#newBtn").onclick = () => {
   current = null; loadList();
   $("#main").innerHTML = `<div class="card"><b>New idea</b><div class="muted">Fill in what you know; defaults are neutral guesses.</div></div><div id="tab"></div>`;
-  ideaForm({ title: "", description: "", category: "saas", recurring_revenue: true, market: META.defaults }, async data => {
+  ideaForm({ title: "", description: "", keywords: "", category: "saas", recurring_revenue: true, market: META.defaults }, async data => {
     current = await api("/api/ideas", { method: "POST", body: data }); tab = "analysis"; render(); loadList();
   }, "Analyze & save");
 };
@@ -389,10 +462,15 @@ async function setMode(mode) {
   showMode(); toast(mode === "offline" ? "Offline mode: no API key needed" : "Claude mode: uses your Anthropic API key");
 }
 function showMode() {
+  $("#liveChk").checked = !!SETTINGS.live;
   $("#modeSel").value = SETTINGS.mode; $("#modeSel").disabled = SETTINGS.locked_offline;
   $("#brainBtn").title = SETTINGS.mode === "offline" ? "Uses built-in business-model templates" : "Uses Claude";
 }
 $("#modeSel").onchange = () => setMode($("#modeSel").value);
+$("#liveChk").onchange = async () => {
+  SETTINGS = await api("/api/settings", { method: "POST", body: { live: $("#liveChk").checked } });
+  showMode(); toast(SETTINGS.live ? "Live market data on: new ideas are calibrated with live signals" : "Live market data off");
+};
 async function goOffline() {
   $("#offBox").style.display = "none"; $("#keyBox").style.display = "none";
   await setMode("offline"); if (retryAfterKey) retryAfterKey();

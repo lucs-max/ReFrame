@@ -12,7 +12,7 @@ from .engine import Engine
 from .models import CATEGORIES, Idea, MarketInputs
 
 STATIC = Path(__file__).parent / "static"
-IDEA_PATH = re.compile(r"^/api/ideas/(\d+)(/outcome|/review)?$")
+IDEA_PATH = re.compile(r"^/api/ideas/(\d+)(/outcome|/review|/market)?$")
 
 
 def _summary(engine: Engine, idea: Idea) -> dict:
@@ -32,7 +32,12 @@ def _full(engine: Engine, idea: Idea) -> dict:
 
 def _settings(engine: Engine) -> dict:
     return {"mode": engine.mode, "locked_offline": engine.force_offline,
-            "has_key": engine.store.load_api_key() is not None}
+            "has_key": engine.store.load_api_key() is not None, "live": engine.live_enabled}
+
+
+def _market(engine: Engine, idea_id: int) -> dict:
+    return {"scan": engine.store.latest_scan(idea_id), "history": engine.store.score_history(idea_id),
+            "live": engine.live_enabled}
 
 
 def make_handler(engine: Engine) -> type[BaseHTTPRequestHandler]:
@@ -86,6 +91,10 @@ def make_handler(engine: Engine) -> type[BaseHTTPRequestHandler]:
                     self._json(engine.review(idea))
                 except LLMUnavailable as e:
                     self._llm_error(e)
+            elif (m := IDEA_PATH.match(path)) and m.group(2) == "/market":
+                idea_id = int(m.group(1))
+                engine.store.get_idea(idea_id)
+                self._json(_market(engine, idea_id))
             elif (m := IDEA_PATH.match(path)) and not m.group(2):
                 self._json(_full(engine, engine.store.get_idea(int(m.group(1)))))
             else:
@@ -110,8 +119,15 @@ def make_handler(engine: Engine) -> type[BaseHTTPRequestHandler]:
                 saved = [engine.store.add_idea(i) for i in ideas]
                 self._json([_summary(engine, i) for i in saved], 201)
             elif path == "/api/settings":
-                engine.set_mode(str(body.get("mode", "")))
+                if "mode" in body:
+                    engine.set_mode(str(body["mode"]))
+                if "live" in body:
+                    engine.set_live(bool(body["live"]))
                 self._json(_settings(engine))
+            elif (m := IDEA_PATH.match(path)) and m.group(2) == "/market":
+                idea = engine.store.get_idea(int(m.group(1)))
+                engine.scan_market(idea, apply=bool(body.get("apply")), refresh=bool(body.get("refresh")))
+                self._json(_market(engine, idea.id) | {"full": _full(engine, engine.store.get_idea(idea.id))})
             elif path == "/api/key":  # save the Anthropic API key locally
                 key = str(body.get("key", "")).strip()
                 if not key:

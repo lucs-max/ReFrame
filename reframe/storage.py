@@ -18,6 +18,22 @@ CREATE TABLE IF NOT EXISTS ideas (
     data TEXT NOT NULL,
     created_at TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS market_scans (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    idea_id INTEGER NOT NULL REFERENCES ideas(id) ON DELETE CASCADE,
+    scanned_at TEXT NOT NULL,
+    data TEXT NOT NULL,
+    applied INTEGER NOT NULL DEFAULT 0
+);
+CREATE TABLE IF NOT EXISTS score_history (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    idea_id INTEGER NOT NULL REFERENCES ideas(id) ON DELETE CASCADE,
+    at TEXT NOT NULL,
+    score REAL NOT NULL,
+    total_profit REAL NOT NULL,
+    pulse REAL,
+    note TEXT
+);
 CREATE TABLE IF NOT EXISTS outcomes (
     idea_id INTEGER PRIMARY KEY REFERENCES ideas(id) ON DELETE CASCADE,
     success INTEGER NOT NULL,
@@ -133,6 +149,29 @@ class Store:
         return [(self._row_to_idea(r), {"success": bool(r["success"]),
                                         "actual_profit": r["actual_profit"], "notes": r["notes"]})
                 for r in rows]
+
+    # -- live market data -------------------------------------------------------
+    def add_scan(self, idea_id: int, data: dict, applied: bool) -> None:
+        self.db.execute("INSERT INTO market_scans (idea_id, scanned_at, data, applied) VALUES (?, ?, ?, ?)",
+                        (idea_id, data["fetched_at"], json.dumps(data), int(applied)))
+        self.db.commit()
+
+    def latest_scan(self, idea_id: int) -> dict | None:
+        r = self.db.execute("SELECT data, applied FROM market_scans WHERE idea_id = ? ORDER BY id DESC LIMIT 1",
+                            (idea_id,)).fetchone()
+        return None if r is None else json.loads(r["data"]) | {"applied": bool(r["applied"])}
+
+    def add_score(self, idea_id: int, score: float, total_profit: float, pulse: float | None,
+                  note: str = "") -> None:
+        now = datetime.now(timezone.utc).isoformat(timespec="seconds")
+        self.db.execute("INSERT INTO score_history (idea_id, at, score, total_profit, pulse, note) "
+                        "VALUES (?, ?, ?, ?, ?, ?)", (idea_id, now, score, total_profit, pulse, note))
+        self.db.commit()
+
+    def score_history(self, idea_id: int) -> list[dict]:
+        rows = self.db.execute("SELECT at, score, total_profit, pulse, note FROM score_history "
+                               "WHERE idea_id = ? ORDER BY id", (idea_id,)).fetchall()
+        return [dict(r) for r in rows]
 
     def outcome_for(self, idea_id: int) -> dict | None:
         r = self.db.execute("SELECT * FROM outcomes WHERE idea_id = ?", (idea_id,)).fetchone()

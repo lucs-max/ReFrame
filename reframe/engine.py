@@ -93,9 +93,13 @@ class Engine:
         """Raises llm.LLMUnavailable (only in claude mode) if Claude can't be used."""
         if self.mode == "offline":
             from .templates import offline_brainstorm
-            return offline_brainstorm(topic, count, self.model)
-        from .llm import brainstorm
-        return brainstorm(topic, count, constraints, self.store.load_api_key())
+            ideas = offline_brainstorm(topic, count, self.model)
+        else:
+            from .llm import brainstorm
+            ideas = brainstorm(topic, count, constraints, self.store.load_api_key())
+            for idea in ideas:
+                idea.keywords = idea.keywords or topic
+        return self.calibrate_new_ideas(ideas) if self.live_enabled else ideas
 
     def review(self, idea: Idea, analysis: Analysis | None = None) -> dict:
         """Raises llm.LLMUnavailable (only in claude mode) if Claude can't be used."""
@@ -106,3 +110,42 @@ class Engine:
         from .llm import review
         result = review(idea, analysis, self.store.load_api_key())
         return result | {"source": "claude"}
+
+    # -- live market data ---------------------------------------------------------
+    @property
+    def live_enabled(self) -> bool:
+        return bool(self.store.load_config().get("live_data", True))
+
+    def set_live(self, enabled: bool) -> None:
+        self.store.save_config(live_data=bool(enabled))
+
+    def fetcher(self):
+        from .live import Fetcher
+        return Fetcher(self.store.home / "market_cache.json")
+
+    def scan_market(self, idea: Idea, apply: bool = False, refresh: bool = False):
+        """Fetch live signals for a saved idea, optionally apply the suggestions.
+
+        Every scan is stored, and the idea's score is added to its history, so
+        you can follow how the live market moves the score over time.
+        """
+        from . import live
+        result = live.scan(idea, self.fetcher(), refresh=refresh)
+        if apply and result.suggestions:
+            live.apply(idea, result)
+            self.store.update_idea(idea)
+        if idea.id is not None:
+            self.store.add_scan(idea.id, result.to_dict(), apply and bool(result.suggestions))
+            a = self.analyze(idea)
+            note = "live data applied" if apply and result.suggestions else "live scan"
+            self.store.add_score(idea.id, a.score, a.market.total_profit, result.pulse, note)
+        return result
+
+    def calibrate_new_ideas(self, ideas: list[Idea]) -> list[Idea]:
+        """Apply live signals to freshly brainstormed ideas (best effort)."""
+        from . import live
+        fetch = self.fetcher()
+        for idea in ideas:
+            result = live.scan(idea, fetch)
+            live.apply(idea, result)
+        return ideas

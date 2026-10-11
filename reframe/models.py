@@ -69,6 +69,7 @@ class Idea:
     category: str = "saas"
     recurring_revenue: bool = True
     market: MarketInputs = field(default_factory=MarketInputs)
+    keywords: str = ""  # search phrase for live market data (default: from the title)
     id: int | None = None
     created_at: str | None = None
 
@@ -86,6 +87,7 @@ class Idea:
             category=data.get("category", "saas"),
             recurring_revenue=bool(data.get("recurring_revenue", True)),
             market=MarketInputs.from_dict(data.get("market")),
+            keywords=str(data.get("keywords") or ""),
             id=data.get("id"),
             created_at=data.get("created_at"),
         )
