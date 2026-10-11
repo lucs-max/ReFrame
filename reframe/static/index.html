@@ -1,0 +1,328 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ReFrame Idea Lab</title>
+<style>
+:root {
+  --bg: #f6f7f9; --panel: #ffffff; --text: #1b1f24; --muted: #5d6570; --line: #e2e5ea;
+  --accent: #3b5bdb; --accent-soft: #e8edff; --good: #2b8a3e; --bad: #c92a2a; --warn: #e67700;
+  --code: #f1f3f5;
+}
+@media (prefers-color-scheme: dark) {
+  :root { --bg: #111418; --panel: #1a1e24; --text: #e6e8eb; --muted: #9aa3ad; --line: #2b3139;
+          --accent: #7c95ff; --accent-soft: #232b45; --good: #69db7c; --bad: #ff8787; --warn: #ffc078;
+          --code: #22272e; }
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--text);
+       font: 15px/1.5 system-ui, -apple-system, Segoe UI, Roboto, sans-serif; }
+header { display: flex; align-items: center; gap: 12px; padding: 14px 20px;
+         border-bottom: 1px solid var(--line); background: var(--panel); }
+header h1 { font-size: 18px; margin: 0; }
+header .sub { color: var(--muted); font-size: 13px; }
+header .spacer { flex: 1; }
+button { font: inherit; border: 1px solid var(--line); background: var(--panel); color: var(--text);
+         border-radius: 8px; padding: 6px 12px; cursor: pointer; }
+button.primary { background: var(--accent); color: #fff; border-color: var(--accent); }
+button:disabled { opacity: .5; cursor: default; }
+.layout { display: grid; grid-template-columns: 300px 1fr; min-height: calc(100vh - 58px); }
+aside { border-right: 1px solid var(--line); padding: 12px; background: var(--panel); }
+.idea { padding: 10px; border-radius: 8px; cursor: pointer; margin-bottom: 4px; }
+.idea:hover { background: var(--bg); }
+.idea.active { background: var(--accent-soft); }
+.idea .t { font-weight: 600; }
+.idea .m { font-size: 12px; color: var(--muted); display: flex; gap: 8px; }
+main { padding: 20px; max-width: 1000px; width: 100%; }
+.card { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 16px;
+        margin-bottom: 16px; }
+.card h3 { margin: 0 0 10px; font-size: 15px; }
+.grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px; }
+.stat .k { font-size: 12px; color: var(--muted); }
+.stat .v { font-size: 20px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.score { display: flex; align-items: center; gap: 16px; }
+.ring { --p: 0; width: 84px; height: 84px; border-radius: 50%; flex: none; display: grid; place-items: center;
+        background: conic-gradient(var(--c, var(--accent)) calc(var(--p) * 1%), var(--line) 0); }
+.ring span { width: 66px; height: 66px; border-radius: 50%; background: var(--panel); display: grid;
+             place-items: center; font-weight: 700; font-size: 20px; }
+.tabs { display: flex; gap: 4px; margin-bottom: 16px; border-bottom: 1px solid var(--line); }
+.tabs button { border: 0; border-bottom: 2px solid transparent; border-radius: 0; background: none; }
+.tabs button.on { border-bottom-color: var(--accent); color: var(--accent); font-weight: 600; }
+table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+th, td { text-align: right; padding: 6px 8px; border-bottom: 1px solid var(--line); }
+th:first-child, td:first-child { text-align: left; }
+th { font-size: 12px; color: var(--muted); font-weight: 500; }
+.pos { color: var(--good); } .neg { color: var(--bad); }
+ul.clean { list-style: none; padding: 0; margin: 0; }
+ul.clean li { padding: 6px 0; border-bottom: 1px solid var(--line); }
+ul.clean li:last-child { border: 0; }
+.muted { color: var(--muted); font-size: 13px; }
+.phase h2 { font-size: 16px; margin: 20px 0 4px; }
+.step { border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; margin: 10px 0;
+        background: var(--panel); }
+.step.done { opacity: .6; }
+.step .head { display: flex; gap: 10px; align-items: baseline; cursor: pointer; }
+.step .num { flex: none; width: 26px; height: 26px; border-radius: 50%; background: var(--accent-soft);
+             color: var(--accent); display: grid; place-items: center; font-size: 13px; font-weight: 700; }
+.step .body { margin: 8px 0 0 36px; }
+.step label { display: flex; gap: 8px; align-items: flex-start; padding: 2px 0; }
+pre { background: var(--code); padding: 12px; border-radius: 8px; overflow-x: auto; font-size: 13px;
+      position: relative; }
+pre button { position: absolute; top: 6px; right: 6px; font-size: 12px; padding: 2px 8px; }
+form .row { display: grid; grid-template-columns: 1fr 140px; gap: 10px; align-items: center;
+            padding: 6px 0; border-bottom: 1px solid var(--line); }
+form label.hint { font-size: 13px; }
+form label.hint small { display: block; color: var(--muted); }
+input, select, textarea { font: inherit; padding: 6px 8px; border: 1px solid var(--line); border-radius: 6px;
+                          background: var(--bg); color: var(--text); width: 100%; }
+textarea { min-height: 60px; }
+.empty { text-align: center; color: var(--muted); padding: 60px 20px; }
+.toast { position: fixed; bottom: 20px; right: 20px; background: var(--text); color: var(--bg);
+         padding: 10px 14px; border-radius: 8px; display: none; }
+@media (max-width: 760px) {
+  .layout { grid-template-columns: 1fr; }
+  aside { border-right: 0; border-bottom: 1px solid var(--line); }
+  main { padding: 16px; }
+  form .row { grid-template-columns: 1fr; }
+}
+</style>
+</head>
+<body>
+<header>
+  <h1>ReFrame</h1><span class="sub">Idea lab: analyze, rank, plan, learn</span>
+  <span class="spacer"></span>
+  <button id="insightsBtn">AI insights</button>
+  <button class="primary" id="newBtn">+ New idea</button>
+</header>
+<div class="layout">
+  <aside>
+    <input id="brainTopic" placeholder="Brainstorm a topic with Claude...">
+    <div style="margin:6px 0 12px"><button id="brainBtn" style="width:100%">Generate 3 ideas</button></div>
+    <div id="list"></div>
+  </aside>
+  <main id="main"><div class="empty">Create an idea or pick one on the left.</div></main>
+</div>
+<div class="toast" id="toast"></div>
+
+<script>
+const $ = (s, el = document) => el.querySelector(s);
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const money = x => (x < 0 ? "-$" : "$") + Math.abs(Math.round(x)).toLocaleString();
+const pct = x => Math.round(x * 100) + "%";
+let META = null, current = null, tab = "analysis";
+
+const FIELDS = {
+  potential_customers: ["Potential customers", "People/businesses with the problem"],
+  demand_growth: ["Market growth / year", "0.1 = 10%"],
+  willingness_to_pay: ["Willingness to pay ($)", "Median price per purchase"],
+  price_elasticity: ["Price sensitivity", "0.5 low .. 3 very high"],
+  purchases_per_year: ["Purchases per year", "12 = monthly, 1 = one-off"],
+  yearly_churn: ["Yearly churn", "Share of customers lost per year"],
+  competitors: ["Competitors", "Direct alternatives today"],
+  differentiation: ["Differentiation", "0..1 how clearly better"],
+  unit_cost: ["Unit cost ($)", "Variable cost per purchase"],
+  customer_acquisition_cost: ["Acquisition cost ($)", "Cost to win one customer"],
+  fixed_costs_per_year: ["Fixed costs / year ($)", "Tools, salaries, rent"],
+  upfront_investment: ["Upfront investment ($)", "To build and launch"],
+  build_complexity: ["Build complexity", "0 trivial .. 1 very hard"],
+  skill_fit: ["Skill fit", "0..1 how well your skills match"],
+  budget: ["Your budget ($)", "Money you can invest"],
+};
+
+function toast(msg) { const t = $("#toast"); t.textContent = msg; t.style.display = "block";
+  clearTimeout(toast.t); toast.t = setTimeout(() => t.style.display = "none", 3000); }
+
+async function api(path, opts = {}) {
+  const r = await fetch(path, { headers: { "Content-Type": "application/json" }, ...opts,
+    body: opts.body ? JSON.stringify(opts.body) : undefined });
+  const data = await r.json();
+  if (!r.ok) throw new Error(data.error || r.statusText);
+  return data;
+}
+
+async function loadList() {
+  const ideas = await api("/api/ideas");
+  $("#list").innerHTML = ideas.length ? ideas.map(i => `
+    <div class="idea ${current?.idea.id === i.id ? "active" : ""}" data-id="${i.id}">
+      <div class="t">${esc(i.title)}</div>
+      <div class="m"><span>${pct(i.score)}</span><span>${money(i.total_profit)} / 3y</span>
+        ${i.outcome === null ? "" : `<span class="${i.outcome ? "pos" : "neg"}">${i.outcome ? "succeeded" : "failed"}</span>`}</div>
+    </div>`).join("") : `<p class="muted">No ideas yet.</p>`;
+  document.querySelectorAll(".idea").forEach(el => el.onclick = () => openIdea(+el.dataset.id));
+}
+
+async function openIdea(id) { current = await api(`/api/ideas/${id}`); render(); loadList(); }
+
+function scoreColor(s) { return s >= .7 ? "var(--good)" : s >= .5 ? "var(--accent)" : s >= .35 ? "var(--warn)" : "var(--bad)"; }
+
+function render() {
+  const { idea, analysis: a } = current;
+  $("#main").innerHTML = `
+    <div class="card score">
+      <div class="ring" style="--p:${Math.round(a.score * 100)};--c:${scoreColor(a.score)}"><span>${pct(a.score)}</span></div>
+      <div><div style="font-size:20px;font-weight:700">${esc(idea.title)}</div>
+        <div>${esc(a.verdict)}</div>
+        <div class="muted">${esc(idea.category)} · ${a.model_trained_on ? `AI trained on ${a.model_trained_on} real outcomes` : "AI using built-in priors"}</div></div>
+    </div>
+    <div class="tabs">${["analysis", "plan", "inputs", "outcome"].map(t =>
+      `<button data-t="${t}" class="${t === tab ? "on" : ""}">${t[0].toUpperCase() + t.slice(1)}</button>`).join("")}</div>
+    <div id="tab"></div>`;
+  document.querySelectorAll(".tabs button").forEach(b => b.onclick = () => { tab = b.dataset.t; render(); });
+  ({ analysis: renderAnalysis, plan: renderPlan, inputs: renderInputs, outcome: renderOutcome })[tab]();
+}
+
+function renderAnalysis() {
+  const m = current.analysis.market, a = current.analysis;
+  $("#tab").innerHTML = `
+    <div class="card"><div class="grid">
+      ${stat("Optimal price", "$" + m.optimal_price.toFixed(2), pct(m.price_vs_wtp) + " of willingness to pay")}
+      ${stat("3-year profit", money(m.total_profit), "after upfront investment")}
+      ${stat("Break-even", m.break_even_month ? "Month " + m.break_even_month : "> 3 years")}
+      ${stat("LTV / CAC", m.ltv_to_cac.toFixed(1) + "×", "≥ 3× is healthy")}
+      ${stat("Gross margin", pct(m.gross_margin))}
+      ${stat("Buyers per supplier", Math.round(m.demand_per_competitor).toLocaleString(), "market gap " + pct(m.market_gap))}
+    </div>${m.funding_gap > 0 ? `<p class="neg">Funding gap: you need ${money(m.funding_gap)} more than your budget.</p>` : ""}</div>
+    <div class="card"><h3>Supply & demand projection</h3><table>
+      <tr><th>Year</th><th>Customers</th><th>Revenue</th><th>Costs</th><th>Profit</th></tr>
+      ${m.years.map(y => `<tr><td>Year ${y.year}</td><td>${Math.round(y.customers).toLocaleString()}</td>
+        <td>${money(y.revenue)}</td><td>${money(y.variable_costs + y.acquisition_costs + y.fixed_costs)}</td>
+        <td class="${y.profit >= 0 ? "pos" : "neg"}">${money(y.profit)}</td></tr>`).join("")}
+    </table></div>
+    <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(280px,1fr))">
+      <div class="card"><h3 class="pos">What works</h3><ul class="clean">${a.strengths.map(s =>
+        `<li>${esc(s.label)} <span class="muted">+${s.impact.toFixed(2)}</span></li>`).join("") || "<li class='muted'>Nothing stands out yet.</li>"}</ul></div>
+      <div class="card"><h3 class="neg">What doesn't</h3><ul class="clean">${a.risks.map(r =>
+        `<li><b>${esc(r.label)}</b> <span class="muted">${r.impact.toFixed(2)}</span><br><span class="muted">${esc(r.advice)}</span></li>`).join("") || "<li class='muted'>No major risks found.</li>"}</ul></div>
+    </div>
+    <div class="card"><h3>What-if experiments</h3><table>
+      <tr><th>Change</th><th>Score</th><th>3-year profit</th></tr>
+      ${a.experiments.map(e => ({ ...e, score_change: Math.round(e.score_change * 1000) / 1000 })).map(e => `<tr><td>${esc(e.name)}</td>
+        <td class="${e.score_change >= 0 ? "pos" : "neg"}">${e.score_change >= 0 ? "+" : ""}${(e.score_change * 100).toFixed(1)}%</td>
+        <td class="${e.profit_change >= 0 ? "pos" : "neg"}">${e.profit_change >= 0 ? "+" : ""}${money(e.profit_change)}</td></tr>`).join("")}
+    </table></div>`;
+}
+const stat = (k, v, sub = "") => `<div class="stat"><div class="k">${k}</div><div class="v">${v}</div><div class="muted">${sub}</div></div>`;
+
+function doneKey() { return "reframe-done-" + current.idea.id; }
+function getDone() { try { return JSON.parse(localStorage.getItem(doneKey()) || "{}"); } catch { return {}; } }
+function setDone(d) { try { localStorage.setItem(doneKey(), JSON.stringify(d)); } catch {} }
+
+function renderPlan() {
+  const p = current.plan, done = getDone();
+  let n = 0;
+  $("#tab").innerHTML = `
+    <div class="card"><b>Suggested stack:</b> ${p.stack.map(esc).join(" · ")}</div>
+    ${p.phases.map(ph => `<div class="phase"><h2>${esc(ph.name)}</h2><div class="muted">${esc(ph.goal)}</div>
+      ${ph.steps.map(s => { n++; const key = "s" + n; return `
+        <div class="step ${done[key] ? "done" : ""}" data-key="${key}">
+          <div class="head"><span class="num">${n}</span><b>${esc(s.title)}</b></div>
+          <div class="body">
+            <p class="muted">${esc(s.why)}</p>
+            ${s.actions.map((t, i) => `<label><input type="checkbox" style="width:auto" data-a="${key}-${i}" ${done[key + "-" + i] ? "checked" : ""}> ${esc(t)}</label>`).join("")}
+            ${s.code ? `<pre><button class="copy">Copy</button><code>${esc(s.code.trim())}</code></pre>` : ""}
+            <p><b>Done when:</b> ${esc(s.done_when)}</p>
+            <label><input type="checkbox" style="width:auto" data-step="${key}" ${done[key] ? "checked" : ""}> Mark step complete</label>
+          </div></div>`; }).join("")}</div>`).join("")}`;
+  $("#tab").querySelectorAll("input[type=checkbox]").forEach(cb => cb.onchange = () => {
+    const d = getDone(); d[cb.dataset.a || cb.dataset.step] = cb.checked; setDone(d);
+    if (cb.dataset.step) cb.closest(".step").classList.toggle("done", cb.checked);
+  });
+  $("#tab").querySelectorAll("pre .copy").forEach(b => b.onclick = () => {
+    navigator.clipboard?.writeText(b.nextElementSibling.textContent).then(() => toast("Copied"));
+  });
+}
+
+function ideaForm(idea, onSubmit, submitLabel) {
+  $("#tab").innerHTML = `<form class="card" id="f">
+    <div class="row"><label class="hint">Title</label><input name="title" required value="${esc(idea.title)}"></div>
+    <div class="row"><label class="hint">Description</label><textarea name="description">${esc(idea.description)}</textarea></div>
+    <div class="row"><label class="hint">Category</label><select name="category">${META.categories.map(c =>
+      `<option ${c === idea.category ? "selected" : ""}>${c}</option>`).join("")}</select></div>
+    <div class="row"><label class="hint">Recurring revenue<small>Subscription or repeat purchases</small></label>
+      <select name="recurring_revenue"><option value="1" ${idea.recurring_revenue ? "selected" : ""}>Yes</option>
+      <option value="0" ${idea.recurring_revenue ? "" : "selected"}>No</option></select></div>
+    ${Object.entries(FIELDS).map(([k, [label, hint]]) => `<div class="row">
+      <label class="hint">${label}<small>${hint}</small></label>
+      <input name="${k}" type="number" step="any" value="${idea.market[k]}"></div>`).join("")}
+    <p id="preview" class="muted"></p>
+    <button class="primary">${submitLabel}</button></form>`;
+  const f = $("#f");
+  const read = () => {
+    const fd = new FormData(f), market = {};
+    for (const k of Object.keys(FIELDS)) market[k] = Number(fd.get(k));
+    return { title: fd.get("title") || "Untitled", description: fd.get("description"), category: fd.get("category"),
+             recurring_revenue: fd.get("recurring_revenue") === "1", market };
+  };
+  let timer;
+  f.oninput = () => { clearTimeout(timer); timer = setTimeout(async () => {
+    try { const r = await api("/api/analyze", { method: "POST", body: read() });
+      $("#preview").innerHTML = `Live preview: score <b>${pct(r.analysis.score)}</b>, 3-year profit <b>${money(r.analysis.market.total_profit)}</b>, price $${r.analysis.market.optimal_price.toFixed(2)}`;
+    } catch (e) { $("#preview").textContent = e.message; } }, 250); };
+  f.onsubmit = async e => { e.preventDefault(); try { await onSubmit(read()); } catch (err) { toast(err.message); } };
+}
+
+function renderInputs() {
+  ideaForm(current.idea, async data => {
+    current = await api(`/api/ideas/${current.idea.id}`, { method: "PUT", body: data });
+    toast("Saved and re-analyzed"); tab = "analysis"; render(); loadList();
+  }, "Save & re-analyze");
+  $("#f").insertAdjacentHTML("beforeend", ` <button type="button" id="del">Delete idea</button>`);
+  $("#del").onclick = async () => { if (!confirm("Delete this idea?")) return;
+    await api(`/api/ideas/${current.idea.id}`, { method: "DELETE" }); current = null;
+    $("#main").innerHTML = `<div class="empty">Idea deleted.</div>`; loadList(); };
+}
+
+function renderOutcome() {
+  const o = current.outcome;
+  $("#tab").innerHTML = `<div class="card">
+    <h3>What really happened?</h3>
+    <p class="muted">When you launch an idea and it clearly succeeds or fails, record it here. ReFrame's AI
+      retrains on every outcome and gets better at telling what works from what doesn't.</p>
+    ${o ? `<p>Recorded: <b class="${o.success ? "pos" : "neg"}">${o.success ? "Success" : "Failure"}</b>${o.actual_profit != null ? ", profit " + money(o.actual_profit) : ""}</p>` : ""}
+    <div class="row" style="display:flex;gap:8px;flex-wrap:wrap;margin:10px 0">
+      <input id="op" type="number" placeholder="Actual profit (optional)" style="max-width:220px">
+      <input id="on" placeholder="Notes (optional)" style="max-width:320px"></div>
+    <button class="primary" data-s="1">It succeeded</button> <button data-s="0">It failed</button></div>`;
+  $("#tab").querySelectorAll("button[data-s]").forEach(b => b.onclick = async () => {
+    const op = $("#op").value;
+    const r = await api(`/api/ideas/${current.idea.id}/outcome`, { method: "POST",
+      body: { success: b.dataset.s === "1", actual_profit: op === "" ? null : Number(op), notes: $("#on").value } });
+    toast(`AI retrained on ${r.trained_on} outcome(s)`); openIdea(current.idea.id);
+  });
+}
+
+$("#newBtn").onclick = () => {
+  current = null; loadList();
+  $("#main").innerHTML = `<div class="card"><b>New idea</b><div class="muted">Fill in what you know; defaults are neutral guesses.</div></div><div id="tab"></div>`;
+  ideaForm({ title: "", description: "", category: "saas", recurring_revenue: true, market: META.defaults }, async data => {
+    current = await api("/api/ideas", { method: "POST", body: data }); tab = "analysis"; render(); loadList();
+  }, "Analyze & save");
+};
+
+$("#insightsBtn").onclick = async () => {
+  const r = await api("/api/insights"); current = null; loadList();
+  const lessons = [...r.lessons].sort((x, y) => Math.abs(y.learned) - Math.abs(x.learned));
+  const max = Math.max(...lessons.map(l => Math.abs(l.learned)), 0.01);
+  $("#main").innerHTML = `<div class="card"><h3>What ReFrame's AI has learned</h3>
+    <p class="muted">${r.accuracy.samples ? `Trained on ${r.accuracy.samples} real outcome(s); explains ${pct(r.accuracy.accuracy)} of them correctly.`
+      : "No outcomes recorded yet: the AI uses built-in priors. Record outcomes on launched ideas to teach it."}</p>
+    <table><tr><th>Factor</th><th>Effect on success</th><th>Learned shift</th></tr>
+    ${lessons.map(l => `<tr><td>${esc(l.label)}</td><td><span class="${l.learned >= 0 ? "pos" : "neg"}">
+      ${"█".repeat(Math.max(1, Math.round(Math.abs(l.learned) / max * 12)))}</span> ${l.learned.toFixed(2)}</td>
+      <td>${Math.abs(l.shift) > .01 ? (l.shift > 0 ? "+" : "") + l.shift.toFixed(2) : "—"}</td></tr>`).join("")}</table></div>`;
+};
+
+$("#brainBtn").onclick = async () => {
+  const topic = $("#brainTopic").value.trim(); if (!topic) return toast("Enter a topic first");
+  const b = $("#brainBtn"); b.disabled = true; b.textContent = "Thinking...";
+  try { const ideas = await api("/api/brainstorm", { method: "POST", body: { topic, count: 3 } });
+    toast(`Added ${ideas.length} ideas`); await loadList(); }
+  catch (e) { toast(e.message); }
+  finally { b.disabled = false; b.textContent = "Generate 3 ideas"; }
+};
+
+(async () => { META = await api("/api/meta"); loadList(); })();
+</script>
+</body>
+</html>

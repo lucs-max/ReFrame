@@ -1,0 +1,24 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "reframe"
+version = "0.1.0"
+description = "Idea lab: analyze market supply & demand, score ideas with a self-learning AI, and generate step-by-step build plans."
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = []
+
+[project.optional-dependencies]
+ai = ["anthropic"]
+dev = ["pytest"]
+
+[project.scripts]
+reframe = "reframe.cli:main"
+
+[tool.setuptools]
+packages = ["reframe"]
+
+[tool.setuptools.package-data]
+reframe = ["examples.json", "static/*.html"]

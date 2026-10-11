@@ -1,0 +1,54 @@
+[
+  {
+    "title": "Invoice chaser for freelancers",
+    "description": "Automatically follows up on unpaid invoices with polite, escalating reminders.",
+    "category": "saas",
+    "recurring_revenue": true,
+    "market": {
+      "potential_customers": 200000, "demand_growth": 0.08, "willingness_to_pay": 15,
+      "price_elasticity": 1.4, "purchases_per_year": 12, "yearly_churn": 0.35,
+      "competitors": 6, "differentiation": 0.6, "unit_cost": 1.5,
+      "customer_acquisition_cost": 40, "fixed_costs_per_year": 15000,
+      "upfront_investment": 4000, "build_complexity": 0.35, "skill_fit": 0.7, "budget": 8000
+    }
+  },
+  {
+    "title": "Generic fitness tracking app",
+    "description": "Log workouts and see progress charts.",
+    "category": "mobile_app",
+    "recurring_revenue": true,
+    "market": {
+      "potential_customers": 5000000, "demand_growth": 0.03, "willingness_to_pay": 8,
+      "price_elasticity": 2.5, "purchases_per_year": 12, "yearly_churn": 0.7,
+      "competitors": 400, "differentiation": 0.15, "unit_cost": 0.8,
+      "customer_acquisition_cost": 25, "fixed_costs_per_year": 30000,
+      "upfront_investment": 20000, "build_complexity": 0.5, "skill_fit": 0.5, "budget": 10000
+    }
+  },
+  {
+    "title": "Refurbished lab equipment marketplace",
+    "description": "Connects university labs selling unused equipment with startups and small labs.",
+    "category": "marketplace",
+    "recurring_revenue": false,
+    "market": {
+      "potential_customers": 40000, "demand_growth": 0.1, "willingness_to_pay": 300,
+      "price_elasticity": 1.1, "purchases_per_year": 2, "yearly_churn": 0.3,
+      "competitors": 3, "differentiation": 0.55, "unit_cost": 60,
+      "customer_acquisition_cost": 120, "fixed_costs_per_year": 25000,
+      "upfront_investment": 10000, "build_complexity": 0.6, "skill_fit": 0.5, "budget": 15000
+    }
+  },
+  {
+    "title": "Ergonomic laptop stand for kitchen counters",
+    "description": "Foldable stand for people who work standing in small apartments.",
+    "category": "physical_product",
+    "recurring_revenue": false,
+    "market": {
+      "potential_customers": 300000, "demand_growth": 0.04, "willingness_to_pay": 45,
+      "price_elasticity": 1.8, "purchases_per_year": 1, "yearly_churn": 1,
+      "competitors": 60, "differentiation": 0.4, "unit_cost": 18,
+      "customer_acquisition_cost": 22, "fixed_costs_per_year": 8000,
+      "upfront_investment": 15000, "build_complexity": 0.55, "skill_fit": 0.4, "budget": 6000
+    }
+  }
+]
