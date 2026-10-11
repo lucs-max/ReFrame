@@ -74,36 +74,52 @@ Plans adapt to the idea's category (`saas`, `mobile_app`, `ecommerce`, `marketpl
 Each step has *why*, a checklist, and a *done when* condition. `reframe plan 1 --out plan.md`
 writes it as a Markdown checklist. In the web app you can tick steps off.
 
-### 4. Optional: Claude for brainstorming and expert review (`reframe/llm.py`)
-ReFrame's scoring and learning run fully offline. To use Claude, install the `ai` extra and
-give ReFrame an Anthropic API key (create one at https://console.anthropic.com/settings/keys):
+### 4. Two modes: offline (default) or Claude
+
+| | **Offline mode** (default) | **Claude mode** |
+|---|---|---|
+| API key / internet | none needed; never contacts Anthropic | Anthropic API key with credit |
+| Cost | free | paid per use |
+| Brainstorm | business-model templates matched to your topic's audience (businesses vs consumers), ranked by ReFrame's AI | Claude invents ideas and estimates market numbers for your topic |
+| Review | rule-based checks + sensitivity analysis (which inputs your profit depends on most) | Claude's written critique |
+| Scoring, ranking, plans, learning | same in both modes (always offline) | same |
+
+```
+reframe mode            # show the current mode
+reframe mode offline    # never use the Anthropic API (default)
+reframe mode claude     # use Claude for brainstorm and review
+reframe --offline ...   # force offline for one command, whatever the saved mode
+```
+
+Setting the environment variable `REFRAME_OFFLINE=1` locks ReFrame to offline mode. In the
+web app, use the mode switch in the top bar.
+
+```
+reframe brainstorm "tools for small restaurants" --count 5 --save
+reframe review 1   # hidden risks, opportunities, questions to validate, inputs to double-check
+```
+
+Offline brainstorm numbers are starting guesses for each business model, not research.
+Replace them with real data (Inputs tab or `reframe edit`) and the scores and plans follow.
+
+**Using Claude mode.** Install the `ai` extra, save an Anthropic API key (create one at
+https://console.anthropic.com/settings/keys) and switch modes:
 
 ```
 pip install -e ".[ai]"
 reframe set-key     # paste your key once; it's saved in ~/.reframe on this computer only
-reframe brainstorm "tools for independent restaurants" --count 5 --save
-reframe review 1   # hidden risks, opportunities, questions to validate, suspicious inputs
+reframe mode claude
 ```
 
 The Claude API is paid per use and billed separately from a Claude.ai subscription. If you
-see "credit balance is too low", add credit at https://console.anthropic.com/settings/billing.
-No key or credit? Brainstorm offline with business-model templates (the numbers are
-placeholders to replace with real data):
-
-```
-reframe brainstorm "tools for small restaurants" --offline --save
-```
-
-In the web app, the first time you brainstorm it asks for the key and saves it the same way.
-An `ANTHROPIC_API_KEY` environment variable, if set, takes priority over the saved key.
-Remove the saved key with `reframe set-key --remove`.
-
-Brainstormed ideas come with estimated market inputs and go through the same analysis.
-Requests use the server-side refusal fallback (`fallbacks: "default"`).
+see "credit balance is too low", add credit at https://console.anthropic.com/settings/billing
+or go back to `reframe mode offline`. An `ANTHROPIC_API_KEY` environment variable, if set,
+takes priority over the saved key. Remove the saved key with `reframe set-key --remove`.
+Claude requests use the server-side refusal fallback (`fallbacks: "default"`).
 
 ## Install
 
-Requires Python 3.9+. The core has no dependencies.
+Requires Python 3.9+. The core has no dependencies, and offline mode needs nothing else.
 
 ```
 pip install -e .          # or: pip install -e ".[ai,dev]"

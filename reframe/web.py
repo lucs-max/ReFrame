@@ -12,7 +12,7 @@ from .engine import Engine
 from .models import CATEGORIES, Idea, MarketInputs
 
 STATIC = Path(__file__).parent / "static"
-IDEA_PATH = re.compile(r"^/api/ideas/(\d+)(/outcome)?$")
+IDEA_PATH = re.compile(r"^/api/ideas/(\d+)(/outcome|/review)?$")
 
 
 def _summary(engine: Engine, idea: Idea) -> dict:
@@ -28,6 +28,11 @@ def _full(engine: Engine, idea: Idea) -> dict:
     return {"idea": idea.to_dict(), "analysis": a.to_dict(),
             "plan": engine.plan(idea, a).to_dict(),
             "outcome": engine.store.outcome_for(idea.id) if idea.id else None}
+
+
+def _settings(engine: Engine) -> dict:
+    return {"mode": engine.mode, "locked_offline": engine.force_offline,
+            "has_key": engine.store.load_api_key() is not None}
 
 
 def make_handler(engine: Engine) -> type[BaseHTTPRequestHandler]:
@@ -48,6 +53,15 @@ def make_handler(engine: Engine) -> type[BaseHTTPRequestHandler]:
         def _error(self, status: int, message: str) -> None:
             self._json({"error": message}, status)
 
+        def _llm_error(self, e: Exception) -> None:
+            from .llm import MissingAPIKey, NoCredits
+            if isinstance(e, MissingAPIKey):
+                self._json({"error": str(e), "needs_key": True}, 401)
+            elif isinstance(e, NoCredits):
+                self._json({"error": str(e), "needs_credits": True}, 402)
+            else:
+                self._json({"error": str(e), "offline_available": True}, 503)
+
         def _body(self) -> dict:
             length = int(self.headers.get("Content-Length") or 0)
             return json.loads(self.rfile.read(length) or b"{}")
@@ -58,12 +72,21 @@ def make_handler(engine: Engine) -> type[BaseHTTPRequestHandler]:
                 self._send(200, (STATIC / "index.html").read_bytes(), "text/html; charset=utf-8")
             elif path == "/api/meta":
                 self._json({"categories": CATEGORIES, "defaults": MarketInputs().to_dict()})
+            elif path == "/api/settings":
+                self._json(_settings(engine))
             elif path == "/api/ideas":
                 self._json([_summary(engine, i) for i in engine.store.list_ideas()])
             elif path == "/api/insights":
                 self._json({"accuracy": engine.accuracy(), "lessons": engine.model.lessons(),
                             "trained_on": engine.model.trained_on})
-            elif m := IDEA_PATH.match(path):
+            elif (m := IDEA_PATH.match(path)) and m.group(2) == "/review":
+                from .llm import LLMUnavailable
+                idea = engine.store.get_idea(int(m.group(1)))
+                try:
+                    self._json(engine.review(idea))
+                except LLMUnavailable as e:
+                    self._llm_error(e)
+            elif (m := IDEA_PATH.match(path)) and not m.group(2):
                 self._json(_full(engine, engine.store.get_idea(int(m.group(1)))))
             else:
                 self._error(404, "not found")
@@ -78,29 +101,24 @@ def make_handler(engine: Engine) -> type[BaseHTTPRequestHandler]:
                 idea = engine.store.add_idea(Idea.from_dict(body))
                 self._json(_full(engine, idea), 201)
             elif path == "/api/brainstorm":
-                from .llm import LLMUnavailable, MissingAPIKey, NoCredits, brainstorm
+                from .llm import LLMUnavailable
                 topic, count = body.get("topic", ""), int(body.get("count", 3))
-                if body.get("offline"):
-                    from .templates import offline_brainstorm
-                    ideas = offline_brainstorm(topic, count, engine.model)
-                else:
-                    try:
-                        ideas = brainstorm(topic, count, api_key=engine.store.load_api_key())
-                    except MissingAPIKey as e:
-                        return self._json({"error": str(e), "needs_key": True}, 401)
-                    except NoCredits as e:
-                        return self._json({"error": str(e), "needs_credits": True}, 402)
-                    except LLMUnavailable as e:
-                        return self._json({"error": str(e), "offline_available": True}, 503)
+                try:
+                    ideas = engine.brainstorm(topic, count)
+                except LLMUnavailable as e:
+                    return self._llm_error(e)
                 saved = [engine.store.add_idea(i) for i in ideas]
                 self._json([_summary(engine, i) for i in saved], 201)
+            elif path == "/api/settings":
+                engine.set_mode(str(body.get("mode", "")))
+                self._json(_settings(engine))
             elif path == "/api/key":  # save the Anthropic API key locally
                 key = str(body.get("key", "")).strip()
                 if not key:
                     return self._error(400, "Paste a key first.")
                 engine.store.save_api_key(key)
                 self._json({"saved": True})
-            elif (m := IDEA_PATH.match(path)) and m.group(2):
+            elif (m := IDEA_PATH.match(path)) and m.group(2) == "/outcome":
                 n = engine.record_outcome(int(m.group(1)), bool(body.get("success")),
                                           body.get("actual_profit"), body.get("notes", ""))
                 self._json({"trained_on": n, "accuracy": engine.accuracy()})

@@ -42,6 +42,22 @@ class Store:
     def model_path(self) -> Path:
         return self.home / "model.json"
 
+    # -- settings ---------------------------------------------------------------
+    @property
+    def config_path(self) -> Path:
+        return self.home / "config.json"
+
+    def load_config(self) -> dict:
+        try:
+            return json.loads(self.config_path.read_text(encoding="utf-8"))
+        except (FileNotFoundError, json.JSONDecodeError):
+            return {}
+
+    def save_config(self, **changes) -> dict:
+        config = self.load_config() | changes
+        self.config_path.write_text(json.dumps(config, indent=2), encoding="utf-8")
+        return config
+
     @property
     def api_key_path(self) -> Path:
         return self.home / "anthropic_api_key"

@@ -27,7 +27,7 @@ button { font: inherit; border: 1px solid var(--line); background: var(--panel);
          border-radius: 8px; padding: 6px 12px; cursor: pointer; }
 button.primary { background: var(--accent); color: #fff; border-color: var(--accent); }
 button:disabled { opacity: .5; cursor: default; }
-.layout { display: grid; grid-template-columns: 300px 1fr; min-height: calc(100vh - 58px); }
+.layout { display: grid; grid-template-columns: 300px minmax(0, 1fr); min-height: calc(100vh - 58px); }
 aside { border-right: 1px solid var(--line); padding: 12px; background: var(--panel); }
 .idea { padding: 10px; border-radius: 8px; cursor: pointer; margin-bottom: 4px; }
 .idea:hover { background: var(--bg); }
@@ -81,7 +81,11 @@ textarea { min-height: 60px; }
 .toast { position: fixed; bottom: 20px; right: 20px; background: var(--text); color: var(--bg);
          padding: 10px 14px; border-radius: 8px; display: none; }
 @media (max-width: 760px) {
-  .layout { grid-template-columns: 1fr; }
+  header { flex-wrap: wrap; padding: 12px 16px; }
+  header .sub { display: none; }
+  header #modeSel { order: 5; width: 100% !important; }
+  .tabs { overflow-x: auto; }
+  .layout { grid-template-columns: minmax(0, 1fr); }
   aside { border-right: 0; border-bottom: 1px solid var(--line); }
   main { padding: 16px; }
   form .row { grid-template-columns: 1fr; }
@@ -92,12 +96,16 @@ textarea { min-height: 60px; }
 <header>
   <h1>ReFrame</h1><span class="sub">Idea lab: analyze, rank, plan, learn</span>
   <span class="spacer"></span>
+  <select id="modeSel" title="Offline mode never contacts Anthropic and needs no API key" style="width:auto">
+    <option value="offline">Offline mode (no API key)</option>
+    <option value="claude">Claude mode (API key)</option>
+  </select>
   <button id="insightsBtn">AI insights</button>
   <button class="primary" id="newBtn">+ New idea</button>
 </header>
 <div class="layout">
   <aside>
-    <input id="brainTopic" placeholder="Brainstorm a topic with Claude...">
+    <input id="brainTopic" placeholder="Brainstorm ideas for a topic...">
     <div style="margin:6px 0 12px"><button id="brainBtn" style="width:100%">Generate 3 ideas</button></div>
     <div id="keyBox" class="card" style="display:none;padding:12px">
       <div style="font-size:13px;margin-bottom:6px">Brainstorming uses Claude and needs an Anthropic API key.
@@ -106,10 +114,11 @@ textarea { min-height: 60px; }
       <input id="keyInput" type="password" placeholder="sk-ant-..." autocomplete="off">
       <div style="margin-top:6px;display:flex;gap:6px"><button class="primary" id="keySave">Save key &amp; retry</button>
         <button id="keyCancel">Cancel</button></div>
+      <div style="margin-top:8px"><button id="keyOffline" style="width:100%">Use offline mode instead (no key)</button></div>
     </div>
     <div id="offBox" class="card" style="display:none;padding:12px">
       <div id="offMsg" style="font-size:13px;margin-bottom:8px"></div>
-      <div style="display:flex;gap:6px;flex-wrap:wrap"><button class="primary" id="offGo">Brainstorm offline instead</button>
+      <div style="display:flex;gap:6px;flex-wrap:wrap"><button class="primary" id="offGo">Switch to offline mode</button>
         <button id="offCancel">Close</button></div>
     </div>
     <div id="list"></div>
@@ -178,11 +187,11 @@ function render() {
         <div>${esc(a.verdict)}</div>
         <div class="muted">${esc(idea.category)} · ${a.model_trained_on ? `AI trained on ${a.model_trained_on} real outcomes` : "AI using built-in priors"}</div></div>
     </div>
-    <div class="tabs">${["analysis", "plan", "inputs", "outcome"].map(t =>
+    <div class="tabs">${["analysis", "plan", "review", "inputs", "outcome"].map(t =>
       `<button data-t="${t}" class="${t === tab ? "on" : ""}">${t[0].toUpperCase() + t.slice(1)}</button>`).join("")}</div>
     <div id="tab"></div>`;
   document.querySelectorAll(".tabs button").forEach(b => b.onclick = () => { tab = b.dataset.t; render(); });
-  ({ analysis: renderAnalysis, plan: renderPlan, inputs: renderInputs, outcome: renderOutcome })[tab]();
+  ({ analysis: renderAnalysis, plan: renderPlan, review: renderReview, inputs: renderInputs, outcome: renderOutcome })[tab]();
 }
 
 function renderAnalysis() {
@@ -286,6 +295,29 @@ function renderInputs() {
     $("#main").innerHTML = `<div class="empty">Idea deleted.</div>`; loadList(); };
 }
 
+async function renderReview() {
+  const id = current.idea.id;
+  $("#tab").innerHTML = `<div class="card muted">${SETTINGS.mode === "offline" ? "Reviewing..." : "Asking Claude for a review..."}</div>`;
+  let r;
+  try { r = await api(`/api/ideas/${id}/review`); }
+  catch (e) { handleClaudeError(e, () => { if (tab === "review") render(); });
+    $("#tab").innerHTML = `<div class="card muted">Review unavailable in Claude mode right now. See the box on the left.</div>`; return; }
+  if (current?.idea.id !== id || tab !== "review") return;
+  const list = (title, items, cls = "") => items?.length ? `<div class="card"><h3 class="${cls}">${title}</h3>
+    <ul class="clean">${items.map(i => `<li>${esc(i)}</li>`).join("")}</ul></div>` : "";
+  $("#tab").innerHTML = `
+    <div class="card"><div class="muted">Review by ${r.source === "claude" ? "Claude" : "ReFrame's offline reviewer"}</div>
+      <p style="margin:6px 0 0">${esc(r.summary)}</p></div>
+    ${list("Hidden risks", r.hidden_risks, "neg")}
+    ${list("Opportunities", r.opportunities, "pos")}
+    ${list("Questions to validate first", r.questions_to_validate)}
+    ${list("Inputs to double-check", r.suspicious_inputs)}
+    ${r.sensitivity ? `<div class="card"><h3>What your profit depends on most</h3>
+      <p class="muted">3-year profit lost if each input turns out 20% worse than you entered.</p><table>
+      <tr><th>Input</th><th>Profit lost</th></tr>${r.sensitivity.map(x => `<tr><td>${esc(x.label)}</td>
+        <td class="${x.profit_loss > 0 ? "neg" : ""}">${money(-x.profit_loss)}</td></tr>`).join("")}</table></div>` : ""}`;
+}
+
 function renderOutcome() {
   const o = current.outcome;
   $("#tab").innerHTML = `<div class="card">
@@ -326,35 +358,57 @@ $("#insightsBtn").onclick = async () => {
       <td>${Math.abs(l.shift) > .01 ? (l.shift > 0 ? "+" : "") + l.shift.toFixed(2) : "—"}</td></tr>`).join("")}</table></div>`;
 };
 
-async function runBrainstorm(offline) {
+let retryAfterKey = null;
+function handleClaudeError(e, retry) {
+  retryAfterKey = retry;
+  if (e.needs_key) { toast(e.message.split("\n")[0]); $("#keyBox").style.display = "block"; $("#keyInput").focus(); }
+  else if (e.needs_credits || e.offline_available) {
+    $("#offMsg").innerHTML = e.needs_credits
+      ? `Your API key works, but your Anthropic account has no API credit (it's billed separately from a Claude.ai subscription).
+         <a href="https://console.anthropic.com/settings/billing" target="_blank" rel="noopener">Add credit</a>, or switch to offline mode, which needs no key.`
+      : esc(e.message) + "<br>Offline mode works without Claude.";
+    $("#offBox").style.display = "block"; }
+  else toast(e.message);
+}
+
+async function runBrainstorm() {
   const topic = $("#brainTopic").value.trim(); if (!topic) return toast("Enter a topic first");
-  const b = $("#brainBtn"); b.disabled = true; b.textContent = offline ? "Generating..." : "Thinking...";
-  try { const ideas = await api("/api/brainstorm", { method: "POST", body: { topic, count: 3, offline } });
-    $("#offBox").style.display = "none";
-    toast(offline ? `Added ${ideas.length} template ideas: edit their numbers in the Inputs tab` : `Added ${ideas.length} ideas`);
+  const offline = SETTINGS.mode === "offline";
+  const b = $("#brainBtn"); b.disabled = true; b.textContent = offline ? "Generating..." : "Asking Claude...";
+  try { const ideas = await api("/api/brainstorm", { method: "POST", body: { topic, count: 3 } });
+    $("#offBox").style.display = "none"; $("#keyBox").style.display = "none";
+    toast(offline ? `Added ${ideas.length} ideas. Their numbers are starting guesses: refine them in the Inputs tab` : `Added ${ideas.length} ideas`);
     await loadList(); }
-  catch (e) {
-    if (e.needs_key) { toast(e.message.split("\n")[0]); $("#keyBox").style.display = "block"; $("#keyInput").focus(); }
-    else if (e.needs_credits || e.offline_available) {
-      $("#offMsg").innerHTML = e.needs_credits
-        ? `Your API key works, but your Anthropic account has no API credit (it's billed separately from a Claude.ai subscription).
-           <a href="https://console.anthropic.com/settings/billing" target="_blank" rel="noopener">Add credit</a> and try again, or brainstorm offline for free.`
-        : esc(e.message) + "<br>You can brainstorm offline instead.";
-      $("#offBox").style.display = "block"; }
-    else toast(e.message); }
+  catch (e) { handleClaudeError(e, runBrainstorm); }
   finally { b.disabled = false; b.textContent = "Generate 3 ideas"; }
 }
-$("#brainBtn").onclick = () => runBrainstorm(false);
-$("#offGo").onclick = () => runBrainstorm(true);
+
+let SETTINGS = { mode: "offline" };
+async function setMode(mode) {
+  SETTINGS = await api("/api/settings", { method: "POST", body: { mode } });
+  showMode(); toast(mode === "offline" ? "Offline mode: no API key needed" : "Claude mode: uses your Anthropic API key");
+}
+function showMode() {
+  $("#modeSel").value = SETTINGS.mode; $("#modeSel").disabled = SETTINGS.locked_offline;
+  $("#brainBtn").title = SETTINGS.mode === "offline" ? "Uses built-in business-model templates" : "Uses Claude";
+}
+$("#modeSel").onchange = () => setMode($("#modeSel").value);
+async function goOffline() {
+  $("#offBox").style.display = "none"; $("#keyBox").style.display = "none";
+  await setMode("offline"); if (retryAfterKey) retryAfterKey();
+}
+$("#brainBtn").onclick = runBrainstorm;
+$("#offGo").onclick = goOffline;
+$("#keyOffline").onclick = goOffline;
 $("#offCancel").onclick = () => { $("#offBox").style.display = "none"; };
 $("#keySave").onclick = async () => {
   try { await api("/api/key", { method: "POST", body: { key: $("#keyInput").value } });
-    $("#keyInput").value = ""; $("#keyBox").style.display = "none"; toast("Key saved"); $("#brainBtn").click(); }
+    $("#keyInput").value = ""; $("#keyBox").style.display = "none"; toast("Key saved"); if (retryAfterKey) retryAfterKey(); }
   catch (e) { toast(e.message); }
 };
 $("#keyCancel").onclick = () => { $("#keyBox").style.display = "none"; };
 
-(async () => { META = await api("/api/meta"); loadList(); })();
+(async () => { META = await api("/api/meta"); SETTINGS = await api("/api/settings"); showMode(); loadList(); })();
 </script>
 </body>
 </html>

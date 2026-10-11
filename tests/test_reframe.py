@@ -200,3 +200,81 @@ def test_no_credit_error_is_explained(monkeypatch):
     monkeypatch.setattr(llm, "_client", lambda key=None: (anthropic, FakeClient))
     with pytest.raises(llm.NoCredits, match="no API credit"):
         llm.brainstorm("restaurants", 1, api_key="sk-ant-x")
+
+
+def test_offline_mode_is_default_and_never_loads_anthropic(tmp_path):
+    import subprocess
+    import sys
+    # Run in a fresh interpreter so we can check what gets imported.
+    code = f"""
+import sys
+from pathlib import Path
+from reframe.engine import Engine
+from reframe.storage import Store
+e = Engine(Store(Path({str(tmp_path)!r})))
+e.store.save_api_key("sk-ant-should-not-be-used")
+assert e.mode == "offline"
+ideas = e.brainstorm("small restaurants", 3)
+idea = e.store.add_idea(ideas[0])
+review = e.review(idea)
+assert review["source"] == "offline" and review["summary"]
+assert "anthropic" not in sys.modules, "offline mode loaded the Anthropic SDK"
+print("ok")
+"""
+    r = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True)
+    assert r.stdout.strip() == "ok", r.stderr
+
+
+def test_mode_switching_and_forced_offline(tmp_path, monkeypatch):
+    engine = Engine(Store(tmp_path))
+    engine.set_mode("claude")
+    assert Engine(Store(tmp_path)).mode == "claude"
+    assert Engine(Store(tmp_path), force_offline=True).mode == "offline"
+    monkeypatch.setenv("REFRAME_OFFLINE", "1")
+    assert Engine(Store(tmp_path)).mode == "offline"
+    with pytest.raises(ValueError):
+        engine.set_mode("gpt")
+
+
+def test_offline_brainstorm_matches_audience():
+    from reframe.templates import detect_audience, offline_brainstorm
+    assert detect_audience("small restaurants") == "business"
+    assert detect_audience("dog owners") == "consumer"
+    biz = {i.title for i in offline_brainstorm("dental clinics", 12)}
+    con = {i.title for i in offline_brainstorm("college students", 12)}
+    assert any("Scheduling & admin software" in t for t in biz)
+    assert not any("Scheduling & admin software" in t for t in con)
+    assert any("Subscription box" in t for t in con)
+
+
+def test_offline_review_flags_problems():
+    from reframe.reviewer import offline_review
+    idea = make_idea(competitors=0, differentiation=0.95, customer_acquisition_cost=500)
+    r = offline_review(idea, analyze(idea))
+    text = " ".join(r["hidden_risks"] + r["suspicious_inputs"])
+    assert "Zero competitors" in text and "Differentiation" in text
+    assert r["sensitivity"][0]["profit_loss"] >= r["sensitivity"][-1]["profit_loss"]
+    assert len(r["questions_to_validate"]) >= 1
+
+
+def test_web_mode_and_review(tmp_path):
+    engine = Engine(Store(tmp_path))
+    server = HTTPServer(("127.0.0.1", 0), make_handler(engine))
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    base = f"http://127.0.0.1:{server.server_port}"
+
+    def call(path, body=None):
+        req = urllib.request.Request(base + path, data=json.dumps(body).encode() if body else None,
+                                     headers={"Content-Type": "application/json"})
+        with urllib.request.urlopen(req) as r:
+            return json.loads(r.read())
+
+    try:
+        assert call("/api/settings")["mode"] == "offline"
+        ideas = call("/api/brainstorm", {"topic": "pet owners", "count": 2})
+        assert len(ideas) == 2
+        review = call(f"/api/ideas/{ideas[0]['id']}/review")
+        assert review["source"] == "offline" and review["sensitivity"]
+        assert call("/api/settings", {"mode": "claude"})["mode"] == "claude"
+    finally:
+        server.shutdown()

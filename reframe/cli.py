@@ -200,18 +200,17 @@ def cmd_insights(engine: Engine, args: argparse.Namespace) -> None:
 
 
 def cmd_brainstorm(engine: Engine, args: argparse.Namespace) -> None:
+    from .llm import LLMUnavailable  # importing this never loads the Anthropic SDK
     if args.offline:
-        from .templates import offline_brainstorm
-        ideas = offline_brainstorm(args.topic, args.count, engine.model)
-        print("Offline ideas from business-model templates. The market numbers are placeholders:\n"
-              "replace them with real data using `reframe edit <id> --set field=value`.")
-    else:
-        from .llm import LLMUnavailable, brainstorm
-        try:
-            ideas = brainstorm(args.topic, args.count, args.constraints or "",
-                               engine.store.load_api_key())
-        except LLMUnavailable as e:
-            sys.exit(str(e))
+        engine.force_offline = True
+    try:
+        ideas = engine.brainstorm(args.topic, args.count, args.constraints or "")
+    except LLMUnavailable as e:  # only possible in claude mode
+        sys.exit(f"{e}\n\nTip: switch to offline mode with `reframe mode offline`.")
+    if engine.mode == "offline":
+        print("Offline mode: ideas come from business-model templates matched to your topic.\n"
+              "The market numbers are starting guesses: replace them with real data using\n"
+              "`reframe edit <id> --set field=value` (add --save to keep the ideas).")
     for idea in ideas:
         if args.save:
             engine.store.add_idea(idea)
@@ -219,20 +218,39 @@ def cmd_brainstorm(engine: Engine, args: argparse.Namespace) -> None:
 
 
 def cmd_review(engine: Engine, args: argparse.Namespace) -> None:
-    from .llm import LLMUnavailable, review
+    from .llm import LLMUnavailable  # importing this never loads the Anthropic SDK
     idea = engine.store.get_idea(args.id)
     try:
-        r = review(idea, engine.analyze(idea), engine.store.load_api_key())
-    except LLMUnavailable as e:
-        sys.exit(str(e))
-    print(f"\n{r['summary']}\n")
+        r = engine.review(idea)
+    except LLMUnavailable as e:  # only possible in claude mode
+        sys.exit(f"{e}\n\nTip: switch to offline mode with `reframe mode offline`.")
+    source = "ReFrame offline reviewer" if r.get("source") == "offline" else "Claude"
+    print(f"\nReview by {source}\n\n{r['summary']}\n")
     for key, label in (("hidden_risks", "Hidden risks"), ("opportunities", "Opportunities"),
                        ("questions_to_validate", "Questions to validate"),
                        ("suspicious_inputs", "Inputs to double-check")):
-        print(f"{label}:")
-        for item in r[key]:
-            print(f"  - {item}")
+        if r.get(key):
+            print(f"{label}:")
+            for item in r[key]:
+                print(f"  - {item}")
+            print()
+    if r.get("sensitivity"):
+        print("What your profit depends on most (3-year profit lost if the input is 20% worse):")
+        for row in r["sensitivity"][:5]:
+            print(f"  {row['label']:<28} {money(-row['profit_loss'])}")
         print()
+
+
+def cmd_mode(engine: Engine, args: argparse.Namespace) -> None:
+    if args.mode:
+        engine.set_mode(args.mode)
+    if engine.mode == "offline":
+        print("Mode: offline. ReFrame never contacts Anthropic and needs no API key.\n"
+              "Brainstorming uses built-in templates; reviews use the offline reviewer.")
+    else:
+        key = "saved" if engine.store.load_api_key() else "not saved (run `reframe set-key`)"
+        print(f"Mode: claude. Brainstorm and review use the Claude API (paid per use). API key: {key}.\n"
+              "Switch back any time with `reframe mode offline`.")
 
 
 def cmd_set_key(engine: Engine, args: argparse.Namespace) -> None:
@@ -249,6 +267,8 @@ def cmd_set_key(engine: Engine, args: argparse.Namespace) -> None:
         print("Warning: Anthropic API keys usually start with 'sk-ant-'. Saving anyway.")
     engine.store.save_api_key(key)
     print(f"Key saved to {engine.store.api_key_path} (only on this computer).")
+    if engine.mode == "offline":
+        print("You're in offline mode. Turn on Claude with: reframe mode claude")
 
 
 def cmd_demo(engine: Engine, args: argparse.Namespace) -> None:
@@ -267,6 +287,8 @@ def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(prog="reframe",
                                 description="Turn ideas into ranked, profitable, step-by-step plans.")
     p.add_argument("--home", help="data directory (default: ~/.reframe or $REFRAME_HOME)")
+    p.add_argument("--offline", action="store_true", dest="force_offline",
+                   help="run this command offline, whatever the saved mode")
     sub = p.add_subparsers(dest="command", required=True)
 
     s = sub.add_parser("new", help="add an idea (interactive, or --file idea.json)")
@@ -306,7 +328,11 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("--notes")
     s.set_defaults(func=cmd_outcome)
 
-    s = sub.add_parser("brainstorm", help="generate ideas with Claude, or --offline without it")
+    s = sub.add_parser("mode", help="show or set the mode: offline (default, no API) or claude")
+    s.add_argument("mode", nargs="?", choices=["offline", "claude"])
+    s.set_defaults(func=cmd_mode)
+
+    s = sub.add_parser("brainstorm", help="generate ideas for a topic (offline or with Claude)")
     s.add_argument("topic")
     s.add_argument("--count", type=int, default=5)
     s.add_argument("--constraints")
@@ -315,11 +341,11 @@ def build_parser() -> argparse.ArgumentParser:
                    help="use built-in business-model templates (no API key or credit needed)")
     s.set_defaults(func=cmd_brainstorm)
 
-    s = sub.add_parser("review", help="expert review of an idea with Claude (optional)")
+    s = sub.add_parser("review", help="expert review of an idea (offline or with Claude)")
     s.add_argument("id", type=int)
     s.set_defaults(func=cmd_review)
 
-    s = sub.add_parser("set-key", help="save your Anthropic API key for the Claude features")
+    s = sub.add_parser("set-key", help="save your Anthropic API key (only needed for claude mode)")
     s.add_argument("--remove", action="store_true", help="delete the saved key")
     s.set_defaults(func=cmd_set_key)
 
@@ -342,7 +368,7 @@ def _safe_console() -> None:
 def main(argv: list[str] | None = None) -> None:
     _safe_console()
     args = build_parser().parse_args(argv)
-    engine = Engine(Store(Path(args.home)) if args.home else None)
+    engine = Engine(Store(Path(args.home)) if args.home else None, force_offline=args.force_offline)
     try:
         args.func(engine, args)
     except (KeyError, ValueError) as e:
