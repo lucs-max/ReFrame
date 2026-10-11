@@ -42,6 +42,28 @@ class Store:
     def model_path(self) -> Path:
         return self.home / "model.json"
 
+    @property
+    def api_key_path(self) -> Path:
+        return self.home / "anthropic_api_key"
+
+    def load_api_key(self) -> str | None:
+        """The Anthropic API key saved with ``reframe set-key``, if any."""
+        try:
+            return self.api_key_path.read_text(encoding="utf-8").strip() or None
+        except FileNotFoundError:
+            return None
+
+    def save_api_key(self, key: str | None) -> None:
+        """Save the key on this computer only (readable by your user only); None removes it."""
+        if not key:
+            self.api_key_path.unlink(missing_ok=True)
+            return
+        self.api_key_path.write_text(key.strip(), encoding="utf-8")
+        try:
+            os.chmod(self.api_key_path, 0o600)
+        except OSError:  # pragma: no cover - e.g. some Windows file systems
+            pass
+
     def add_idea(self, idea: Idea) -> Idea:
         now = datetime.now(timezone.utc).isoformat(timespec="seconds")
         data = idea.to_dict()

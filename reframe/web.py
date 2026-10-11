@@ -78,13 +78,22 @@ def make_handler(engine: Engine) -> type[BaseHTTPRequestHandler]:
                 idea = engine.store.add_idea(Idea.from_dict(body))
                 self._json(_full(engine, idea), 201)
             elif path == "/api/brainstorm":
-                from .llm import LLMUnavailable, brainstorm
+                from .llm import LLMUnavailable, MissingAPIKey, brainstorm
                 try:
-                    ideas = brainstorm(body.get("topic", ""), int(body.get("count", 3)))
+                    ideas = brainstorm(body.get("topic", ""), int(body.get("count", 3)),
+                                       api_key=engine.store.load_api_key())
+                except MissingAPIKey as e:
+                    return self._json({"error": str(e), "needs_key": True}, 401)
                 except LLMUnavailable as e:
                     return self._error(503, str(e))
                 saved = [engine.store.add_idea(i) for i in ideas]
                 self._json([_summary(engine, i) for i in saved], 201)
+            elif path == "/api/key":  # save the Anthropic API key locally
+                key = str(body.get("key", "")).strip()
+                if not key:
+                    return self._error(400, "Paste a key first.")
+                engine.store.save_api_key(key)
+                self._json({"saved": True})
             elif (m := IDEA_PATH.match(path)) and m.group(2):
                 n = engine.record_outcome(int(m.group(1)), bool(body.get("success")),
                                           body.get("actual_profit"), body.get("notes", ""))

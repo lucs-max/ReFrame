@@ -75,14 +75,19 @@ Each step has *why*, a checklist, and a *done when* condition. `reframe plan 1 -
 writes it as a Markdown checklist. In the web app you can tick steps off.
 
 ### 4. Optional: Claude for brainstorming and expert review (`reframe/llm.py`)
-ReFrame's scoring and learning run fully offline. If you install the `ai` extra and set
-`ANTHROPIC_API_KEY`, you can also use Claude:
+ReFrame's scoring and learning run fully offline. To use Claude, install the `ai` extra and
+give ReFrame an Anthropic API key (create one at https://console.anthropic.com/settings/keys):
 
 ```
 pip install -e ".[ai]"
+reframe set-key     # paste your key once; it's saved in ~/.reframe on this computer only
 reframe brainstorm "tools for independent restaurants" --count 5 --save
 reframe review 1   # hidden risks, opportunities, questions to validate, suspicious inputs
 ```
+
+In the web app, the first time you brainstorm it asks for the key and saves it the same way.
+An `ANTHROPIC_API_KEY` environment variable, if set, takes priority over the saved key.
+Remove the saved key with `reframe set-key --remove`.
 
 Brainstormed ideas come with estimated market inputs and go through the same analysis.
 Requests use the server-side refusal fallback (`fallbacks: "default"`).

@@ -2,7 +2,8 @@
 
 ReFrame's own model does the scoring and learning offline. If the
 ``anthropic`` package is installed and credentials are configured
-(``ANTHROPIC_API_KEY`` or an ``ant auth login`` profile), Claude can also:
+(``reframe set-key``, ``ANTHROPIC_API_KEY`` or an ``ant auth login`` profile),
+Claude can also:
 
 * brainstorm new ideas with estimated market inputs (``brainstorm``), and
 * write a qualitative review of an analyzed idea (``review``).
@@ -14,6 +15,7 @@ customer interviews before trusting them.
 from __future__ import annotations
 
 import json
+import os
 
 from .analyzer import Analysis
 from .models import CATEGORIES, Idea, MarketInputs
@@ -26,12 +28,26 @@ class LLMUnavailable(RuntimeError):
     pass
 
 
-def _client():
+class MissingAPIKey(LLMUnavailable):
+    """No usable Anthropic API key: ask the user for one."""
+
+
+NO_KEY_HELP = (
+    "This feature uses Claude and needs an Anthropic API key.\n"
+    "1. Create a key at https://console.anthropic.com/settings/keys\n"
+    "2. Save it with:  reframe set-key   (or paste it in the web app)\n"
+    "Everything else in ReFrame works without a key."
+)
+
+
+def _client(api_key: str | None = None):
     try:
         import anthropic
     except ImportError as e:  # pragma: no cover - depends on environment
-        raise LLMUnavailable("Install the optional dependency: pip install 'reframe[ai]'") from e
-    return anthropic, anthropic.Anthropic()
+        raise LLMUnavailable("Install the optional dependency: pip install \"reframe[ai]\"") from e
+    key = os.environ.get("ANTHROPIC_API_KEY") or api_key
+    # Without a key, the SDK can still use ANTHROPIC_AUTH_TOKEN or an `ant auth login` profile.
+    return anthropic, (anthropic.Anthropic(api_key=key) if key else anthropic.Anthropic())
 
 
 _MARKET_SCHEMA = {
@@ -94,8 +110,8 @@ fixed_costs_per_year, upfront_investment, budget: USD
 build_complexity, skill_fit: 0..1"""
 
 
-def _ask(system: str, prompt: str, schema: dict) -> dict:
-    anthropic, client = _client()
+def _ask(system: str, prompt: str, schema: dict, api_key: str | None = None) -> dict:
+    anthropic, client = _client(api_key)
     try:
         response = client.beta.messages.create(
             model=MODEL,
@@ -106,8 +122,14 @@ def _ask(system: str, prompt: str, schema: dict) -> dict:
             system=system,
             messages=[{"role": "user", "content": prompt}],
         )
+    except TypeError as e:
+        # The SDK raises a plain TypeError when it finds no credentials at all.
+        if "authentication" in str(e).lower():
+            raise MissingAPIKey(NO_KEY_HELP) from e
+        raise
     except anthropic.AuthenticationError as e:
-        raise LLMUnavailable("Claude credentials missing or invalid (set ANTHROPIC_API_KEY).") from e
+        raise MissingAPIKey("Your Anthropic API key was rejected (invalid or revoked).\n"
+                            + NO_KEY_HELP) from e
     except anthropic.RateLimitError as e:
         raise LLMUnavailable("Rate limited by the Claude API; try again shortly.") from e
     except anthropic.APIStatusError as e:
@@ -123,17 +145,18 @@ def _ask(system: str, prompt: str, schema: dict) -> dict:
     return json.loads(text)
 
 
-def brainstorm(topic: str, count: int = 5, constraints: str = "") -> list[Idea]:
+def brainstorm(topic: str, count: int = 5, constraints: str = "",
+               api_key: str | None = None) -> list[Idea]:
     system = ("You are a pragmatic startup analyst. Propose business ideas with realistic, "
               "conservative market estimates. Prefer underserved niches with clear demand "
               "over crowded markets.")
     prompt = (f"Generate {count} distinct business ideas about: {topic}\n"
               f"Constraints from the founder: {constraints or 'none'}\n\n{FIELD_GUIDE}")
-    data = _ask(system, prompt, _IDEAS_SCHEMA)
+    data = _ask(system, prompt, _IDEAS_SCHEMA, api_key)
     return [Idea.from_dict(d) for d in data["ideas"]]
 
 
-def review(idea: Idea, analysis: Analysis) -> dict:
+def review(idea: Idea, analysis: Analysis, api_key: str | None = None) -> dict:
     system = ("You are a skeptical investor and operator. Review the idea and the quantitative "
               "analysis. Point out what the numbers may be missing and which inputs look unrealistic.")
     payload = {
@@ -149,4 +172,5 @@ def review(idea: Idea, analysis: Analysis) -> dict:
             "risks": [r["label"] for r in analysis.risks],
         },
     }
-    return _ask(system, json.dumps(payload, indent=2) + "\n\n" + FIELD_GUIDE, _REVIEW_SCHEMA)
+    return _ask(system, json.dumps(payload, indent=2) + "\n\n" + FIELD_GUIDE, _REVIEW_SCHEMA,
+                api_key)

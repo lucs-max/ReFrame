@@ -202,7 +202,8 @@ def cmd_insights(engine: Engine, args: argparse.Namespace) -> None:
 def cmd_brainstorm(engine: Engine, args: argparse.Namespace) -> None:
     from .llm import LLMUnavailable, brainstorm
     try:
-        ideas = brainstorm(args.topic, args.count, args.constraints or "")
+        ideas = brainstorm(args.topic, args.count, args.constraints or "",
+                           engine.store.load_api_key())
     except LLMUnavailable as e:
         sys.exit(str(e))
     for idea in ideas:
@@ -215,7 +216,7 @@ def cmd_review(engine: Engine, args: argparse.Namespace) -> None:
     from .llm import LLMUnavailable, review
     idea = engine.store.get_idea(args.id)
     try:
-        r = review(idea, engine.analyze(idea))
+        r = review(idea, engine.analyze(idea), engine.store.load_api_key())
     except LLMUnavailable as e:
         sys.exit(str(e))
     print(f"\n{r['summary']}\n")
@@ -226,6 +227,22 @@ def cmd_review(engine: Engine, args: argparse.Namespace) -> None:
         for item in r[key]:
             print(f"  - {item}")
         print()
+
+
+def cmd_set_key(engine: Engine, args: argparse.Namespace) -> None:
+    if args.remove:
+        engine.store.save_api_key(None)
+        print("Saved API key removed.")
+        return
+    import getpass
+    print("Create a key at https://console.anthropic.com/settings/keys")
+    key = getpass.getpass("Paste your Anthropic API key (input is hidden): ").strip()
+    if not key:
+        sys.exit("No key entered; nothing saved.")
+    if not key.startswith("sk-ant-"):
+        print("Warning: Anthropic API keys usually start with 'sk-ant-'. Saving anyway.")
+    engine.store.save_api_key(key)
+    print(f"Key saved to {engine.store.api_key_path} (only on this computer).")
 
 
 def cmd_demo(engine: Engine, args: argparse.Namespace) -> None:
@@ -293,6 +310,10 @@ def build_parser() -> argparse.ArgumentParser:
     s = sub.add_parser("review", help="expert review of an idea with Claude (optional)")
     s.add_argument("id", type=int)
     s.set_defaults(func=cmd_review)
+
+    s = sub.add_parser("set-key", help="save your Anthropic API key for the Claude features")
+    s.add_argument("--remove", action="store_true", help="delete the saved key")
+    s.set_defaults(func=cmd_set_key)
 
     s = sub.add_parser("serve", help="start the web app")
     s.add_argument("--host", default="127.0.0.1")

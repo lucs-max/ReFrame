@@ -147,3 +147,23 @@ def test_cli_works_on_non_utf8_console(tmp_path):
         r = subprocess.run([sys.executable, "-m", "reframe", *args], env=env, capture_output=True)
         assert r.returncode == 0, r.stderr.decode(errors="replace")
     assert "→" in (tmp_path / "plan.md").read_text(encoding="utf-8")
+
+
+def test_missing_api_key_gives_friendly_error(tmp_path, monkeypatch):
+    pytest.importorskip("anthropic")
+    from reframe import llm
+    for var in ("ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN", "ANTHROPIC_PROFILE"):
+        monkeypatch.delenv(var, raising=False)
+    monkeypatch.setenv("HOME", str(tmp_path))  # no `ant auth login` profile
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
+    with pytest.raises(llm.MissingAPIKey, match="needs an Anthropic API key"):
+        llm.brainstorm("restaurants", 1)
+
+
+def test_api_key_is_saved_and_removed(tmp_path):
+    store = Store(tmp_path)
+    assert store.load_api_key() is None
+    store.save_api_key("  sk-ant-test  ")
+    assert store.load_api_key() == "sk-ant-test"
+    store.save_api_key(None)
+    assert store.load_api_key() is None
