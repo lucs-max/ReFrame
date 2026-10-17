@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Rigid Front VR</title>
+  <style>
+    :root { --bg: #0d1117; --fg: #e6edf3; --muted: #8b949e; --accent: #f0883e; }
+    html, body { margin: 0; height: 100%; background: var(--bg); color: var(--fg);
+      font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; overflow: hidden; }
+    canvas { display: block; }
+    #menu { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center;
+      background: rgba(13, 17, 23, 0.86); z-index: 10; padding: 16px; box-sizing: border-box; }
+    #menu.hidden { display: none; }
+    .card { max-width: 560px; width: 100%; }
+    h1 { margin: 0 0 4px; font-size: 34px; letter-spacing: 1px; }
+    h1 span { color: var(--accent); }
+    p { color: var(--muted); line-height: 1.5; margin: 8px 0; }
+    .buttons { display: flex; gap: 12px; flex-wrap: wrap; margin: 20px 0; }
+    button { font: inherit; font-weight: 600; padding: 12px 20px; border-radius: 8px; border: 0;
+      cursor: pointer; background: var(--accent); color: #111; }
+    button.secondary { background: #30363d; color: var(--fg); }
+    button:disabled { opacity: 0.45; cursor: not-allowed; }
+    details { margin-top: 8px; color: var(--muted); font-size: 14px; }
+    summary { cursor: pointer; color: var(--fg); }
+    table { border-collapse: collapse; margin-top: 8px; }
+    td { padding: 2px 12px 2px 0; vertical-align: top; }
+    td:first-child { color: var(--fg); white-space: nowrap; }
+    #crosshair { position: fixed; left: 50%; top: 50%; width: 6px; height: 6px; margin: -3px 0 0 -3px;
+      border-radius: 50%; background: rgba(255, 255, 255, 0.8); pointer-events: none; display: none; z-index: 5; }
+    #status { font-size: 13px; }
+  </style>
+</head>
+<body>
+  <div id="menu">
+    <div class="card">
+      <h1>RIGID <span>FRONT</span> VR</h1>
+      <p>A physics shooter: a rigid-body player that walks for real, physics hands that can push, grab and throw,
+        tracked chest with holsters, and ragdoll enemies that fight back.</p>
+      <div class="buttons">
+        <button id="enter-vr" disabled>Enter VR</button>
+        <button id="play-desktop" class="secondary">Play on desktop</button>
+      </div>
+      <p id="status">Checking for a VR headset…</p>
+      <details>
+        <summary>VR controls</summary>
+        <table>
+          <tr><td>Left stick</td><td>Walk (click to sprint)</td></tr>
+          <tr><td>Right stick</td><td>Snap turn left/right, push up to jump</td></tr>
+          <tr><td>Grip</td><td>Grab weapons, props, magazines and bodies. Release near a holster to holster</td></tr>
+          <tr><td>Trigger</td><td>Fire</td></tr>
+          <tr><td>A / X</td><td>Eject the magazine of the gun in that hand</td></tr>
+          <tr><td>B</td><td>Start the next wave</td></tr>
+          <tr><td>Y</td><td>Switch walking mode: stick or arm-swing</td></tr>
+          <tr><td>Reload</td><td>Eject, grab a fresh magazine from your belt, push it into the magwell</td></tr>
+        </table>
+      </details>
+      <details>
+        <summary>Desktop controls</summary>
+        <table>
+          <tr><td>WASD / Mouse</td><td>Walk / look (Shift sprints, Space jumps, C crouches)</td></tr>
+          <tr><td>Left click</td><td>Fire</td></tr>
+          <tr><td>E / Q</td><td>Grab what you look at / throw what you hold</td></tr>
+          <tr><td>R</td><td>Reload</td></tr>
+          <tr><td>1 2 3</td><td>Pistol, SMG, shotgun</td></tr>
+          <tr><td>Enter</td><td>Start the next wave</td></tr>
+        </table>
+      </details>
+    </div>
+  </div>
+  <div id="crosshair"></div>
+
+  <script type="importmap">
+    { "imports": { "three": "./lib/three.module.min.js", "cannon-es": "./lib/cannon-es.js" } }
+  </script>
+  <script type="module" src="./src/main.js"></script>
+</body>
+</html>
